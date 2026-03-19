@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from hypothesis import assume, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 # Ensure project root is on sys.path so services/ is importable
@@ -28,9 +28,6 @@ from services.mcp_servers.weather.server import (
 # ---------------------------------------------------------------------------
 # Shared strategies
 # ---------------------------------------------------------------------------
-_temp_st = st.floats(min_value=0.0, max_value=50.0, allow_nan=False, allow_infinity=False)
-_humidity_st = st.floats(min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False)
-_wind_st = st.floats(min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False)
 
 
 # ===================================================================
@@ -41,21 +38,21 @@ class TestProperty9FireDangerMonotonicity:
 
     @settings(max_examples=100, database=None)
     @given(
-        temp_a=_temp_st,
-        temp_b=_temp_st,
-        humidity_a=_humidity_st,
-        humidity_b=_humidity_st,
-        wind_a=_wind_st,
-        wind_b=_wind_st,
+        temp_b=st.floats(min_value=0.0, max_value=49.9, allow_nan=False, allow_infinity=False),
+        temp_delta=st.floats(min_value=0.01, max_value=10.0, allow_nan=False, allow_infinity=False),
+        humidity_a=st.floats(min_value=0.0, max_value=99.9, allow_nan=False, allow_infinity=False),
+        humidity_delta=st.floats(min_value=0.01, max_value=10.0, allow_nan=False, allow_infinity=False),
+        wind_b=st.floats(min_value=0.0, max_value=99.9, allow_nan=False, allow_infinity=False),
+        wind_delta=st.floats(min_value=0.01, max_value=10.0, allow_nan=False, allow_infinity=False),
     )
     def test_fire_danger_monotonicity(
         self,
-        temp_a: float,
         temp_b: float,
+        temp_delta: float,
         humidity_a: float,
-        humidity_b: float,
-        wind_a: float,
+        humidity_delta: float,
         wind_b: float,
+        wind_delta: float,
     ) -> None:
         """Feature: aws-agentcore-mcp-infrastructure, Property 9: Fire Danger Monotonicity.
 
@@ -65,10 +62,14 @@ class TestProperty9FireDangerMonotonicity:
 
         **Validates: Requirements 3.4**
         """
-        # Condition A must be strictly more severe than condition B
-        assume(temp_a > temp_b)
-        assume(humidity_a < humidity_b)
-        assume(wind_a > wind_b)
+        # Construct A strictly more severe than B by adding deltas
+        temp_a = min(temp_b + temp_delta, 50.0)
+        humidity_b = min(humidity_a + humidity_delta, 100.0)
+        wind_a = min(wind_b + wind_delta, 100.0)
+
+        # Ensure strict ordering still holds after clamping
+        if not (temp_a > temp_b and humidity_a < humidity_b and wind_a > wind_b):
+            return
 
         ffdi_a = calculate_ffdi(temperature=temp_a, humidity=humidity_a, wind_speed=wind_a)
         ffdi_b = calculate_ffdi(temperature=temp_b, humidity=humidity_b, wind_speed=wind_b)
