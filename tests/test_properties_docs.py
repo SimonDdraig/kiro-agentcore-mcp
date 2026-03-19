@@ -10,10 +10,8 @@ from __future__ import annotations
 import base64
 import sys
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -77,9 +75,7 @@ class TestProperty7DocumentRoundTrip:
             result = get_document(document_key=document_key)
 
         assert result["key"] == document_key
-        assert result["content"] == content, (
-            f"Round-trip failed: expected {content!r}, got {result['content']!r}"
-        )
+        assert result["content"] == content, f"Round-trip failed: expected {content!r}, got {result['content']!r}"
         assert result["content_type"] == "text/markdown"
 
     @settings(max_examples=100, database=None)
@@ -113,9 +109,7 @@ class TestProperty7DocumentRoundTrip:
 
         assert result["key"] == document_key
         expected_b64 = base64.b64encode(content).decode("utf-8")
-        assert result["content"] == expected_b64, (
-            "Round-trip failed: base64 content does not match original bytes"
-        )
+        assert result["content"] == expected_b64, "Round-trip failed: base64 content does not match original bytes"
         assert result["content_type"] == "application/pdf"
 
 
@@ -174,6 +168,5 @@ class TestProperty8SearchMatchesContent:
 
         matched_keys = [r["key"] for r in result["results"]]
         assert document_key in matched_keys, (
-            f"Document '{document_key}' containing keyword '{keyword}' "
-            f"was not found in search results: {matched_keys}"
+            f"Document '{document_key}' containing keyword '{keyword}' was not found in search results: {matched_keys}"
         )

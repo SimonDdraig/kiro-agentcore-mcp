@@ -8,13 +8,11 @@ Covers list_documents, get_document, search_documents, and error handling.
 from __future__ import annotations
 
 import base64
-import io
 import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from botocore.exceptions import ClientError
 
 # Ensure project root is on sys.path so models/ is importable
@@ -160,10 +158,13 @@ class TestSearchDocuments:
     def test_keyword_match_returns_results(self) -> None:
         """Keyword match returns matching documents with excerpts."""
         mock_s3 = MagicMock()
-        self._setup_paginator(mock_s3, [
-            _make_s3_object("species/koala.md"),
-            _make_s3_object("species/platypus.md"),
-        ])
+        self._setup_paginator(
+            mock_s3,
+            [
+                _make_s3_object("species/koala.md"),
+                _make_s3_object("species/platypus.md"),
+            ],
+        )
         mock_s3.get_object.side_effect = [
             {"Body": _make_body("The koala is a marsupial found in eucalyptus forests.")},
             {"Body": _make_body("The platypus is a monotreme found in freshwater streams.")},
@@ -193,10 +194,13 @@ class TestSearchDocuments:
     def test_skips_pdf_files(self) -> None:
         """PDF files are skipped during content search."""
         mock_s3 = MagicMock()
-        self._setup_paginator(mock_s3, [
-            _make_s3_object("species/koala.md"),
-            _make_s3_object("management_plans/plan.pdf"),
-        ])
+        self._setup_paginator(
+            mock_s3,
+            [
+                _make_s3_object("species/koala.md"),
+                _make_s3_object("management_plans/plan.pdf"),
+            ],
+        )
         # Only the markdown file should trigger get_object
         mock_s3.get_object.return_value = {
             "Body": _make_body("The koala is a marsupial found in eucalyptus forests."),

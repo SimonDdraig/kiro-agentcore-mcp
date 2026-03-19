@@ -64,7 +64,7 @@ for _actions in _ALLOWED_ACTIONS.values():
 def template_json() -> dict[str, Any]:
     """Synthesise the BushRangerStack and return the raw CloudFormation JSON."""
     app = cdk.App()
-    stack = BushRangerStack(
+    stack = BushRangerStack(  # noqa: F841
         app,
         "TestPropBushRangerStack",
         env=cdk.Environment(account="123456789012", region="us-east-1"),
@@ -159,9 +159,7 @@ class TestProperty12IAMLeastPrivilege:
             actions = [actions]
 
         for action in actions:
-            assert action != "*", (
-                f"IAM policy statement contains wildcard Action '*': {json.dumps(stmt, indent=2)}"
-            )
+            assert action != "*", f"IAM policy statement contains wildcard Action '*': {json.dumps(stmt, indent=2)}"
 
     @settings(max_examples=100, database=None)
     @given(data=st.data())
@@ -193,8 +191,7 @@ class TestProperty12IAMLeastPrivilege:
             # Resource can be a dict (Fn::Join, Fn::GetAtt, etc.) — those are scoped, not wildcards
             if isinstance(resource, str):
                 assert resource != "*", (
-                    f"IAM policy statement contains wildcard Resource '*': "
-                    f"{json.dumps(stmt, indent=2)}"
+                    f"IAM policy statement contains wildcard Resource '*': {json.dumps(stmt, indent=2)}"
                 )
 
     @settings(max_examples=100, database=None)

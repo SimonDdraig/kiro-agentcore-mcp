@@ -19,6 +19,7 @@ extend-select = ["D100", "D101", "D102", "D103"]
 
 [tool.ruff.lint.per-file-ignores]
 "infra/stacks/bush_ranger_stack.py" = ["E402"]
+"tests/**/*.py" = ["S101", "D103", "E402"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

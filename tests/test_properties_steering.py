@@ -80,9 +80,7 @@ class TestProperty20DataQualitySteeringValidatesSightingInputs:
         status=_valid_status_st,
         date_str=_valid_date_st,
     )
-    def test_all_valid_fields_accepted(
-        self, lat: float, lng: float, status: str, date_str: str
-    ) -> None:
+    def test_all_valid_fields_accepted(self, lat: float, lng: float, status: str, date_str: str) -> None:
         """Feature: aws-agentcore-mcp-infrastructure, Property 20: Data quality steering validates sighting inputs.
 
         For any sighting with all fields within valid ranges, the validator
@@ -101,9 +99,7 @@ class TestProperty20DataQualitySteeringValidatesSightingInputs:
         status=_valid_status_st,
         date_str=_valid_date_st,
     )
-    def test_invalid_latitude_rejected(
-        self, lat: float, lng: float, status: str, date_str: str
-    ) -> None:
+    def test_invalid_latitude_rejected(self, lat: float, lng: float, status: str, date_str: str) -> None:
         """Feature: aws-agentcore-mcp-infrastructure, Property 20: Data quality steering validates sighting inputs.
 
         For any sighting with latitude outside [-44, -10], the validator
@@ -125,9 +121,7 @@ class TestProperty20DataQualitySteeringValidatesSightingInputs:
         status=_valid_status_st,
         date_str=_valid_date_st,
     )
-    def test_invalid_longitude_rejected(
-        self, lat: float, lng: float, status: str, date_str: str
-    ) -> None:
+    def test_invalid_longitude_rejected(self, lat: float, lng: float, status: str, date_str: str) -> None:
         """Feature: aws-agentcore-mcp-infrastructure, Property 20: Data quality steering validates sighting inputs.
 
         For any sighting with longitude outside [113, 154], the validator
@@ -149,9 +143,7 @@ class TestProperty20DataQualitySteeringValidatesSightingInputs:
         status=_invalid_status_st,
         date_str=_valid_date_st,
     )
-    def test_invalid_conservation_status_rejected(
-        self, lat: float, lng: float, status: str, date_str: str
-    ) -> None:
+    def test_invalid_conservation_status_rejected(self, lat: float, lng: float, status: str, date_str: str) -> None:
         """Feature: aws-agentcore-mcp-infrastructure, Property 20: Data quality steering validates sighting inputs.
 
         For any sighting with an invalid conservation status, the validator
@@ -173,9 +165,7 @@ class TestProperty20DataQualitySteeringValidatesSightingInputs:
         status=_valid_status_st,
         date_str=_future_date_st,
     )
-    def test_future_date_rejected(
-        self, lat: float, lng: float, status: str, date_str: str
-    ) -> None:
+    def test_future_date_rejected(self, lat: float, lng: float, status: str, date_str: str) -> None:
         """Feature: aws-agentcore-mcp-infrastructure, Property 20: Data quality steering validates sighting inputs.
 
         For any sighting with a future date, the validator SHALL reject the
@@ -239,12 +229,12 @@ class TestProperty20DataQualitySteeringValidatesSightingInputs:
 # Property 21: Safety Steering Includes Emergency Info for Elevated Fire Danger
 # ===================================================================
 class TestProperty21SafetySteeringIncludesEmergencyInfo:
-    """Feature: aws-agentcore-mcp-infrastructure, Property 21: Safety steering includes emergency info for elevated fire danger."""
+    """Feature: aws-agentcore-mcp-infrastructure, Property 21: Safety steering emergency info."""
 
     @settings(max_examples=100, database=None)
     @given(danger_level=_elevated_danger_st)
     def test_elevated_danger_includes_emergency_contact(self, danger_level: str) -> None:
-        """Feature: aws-agentcore-mcp-infrastructure, Property 21: Safety steering includes emergency info for elevated fire danger.
+        """Property 21: Safety steering includes emergency info for elevated fire danger.
 
         For any elevated fire danger level (high, very_high, extreme), the
         safety guidance SHALL include the emergency contact number "000".
@@ -252,9 +242,7 @@ class TestProperty21SafetySteeringIncludesEmergencyInfo:
         **Validates: Requirements 17.7**
         """
         result = get_safety_guidance(danger_level)
-        assert result["requires_warning"] is True, (
-            f"Expected requires_warning=True for danger level '{danger_level}'"
-        )
+        assert result["requires_warning"] is True, f"Expected requires_warning=True for danger level '{danger_level}'"
         assert result["emergency_contact"] == EMERGENCY_CONTACT, (
             f"Expected emergency_contact='{EMERGENCY_CONTACT}', got '{result['emergency_contact']}'"
         )
@@ -262,7 +250,7 @@ class TestProperty21SafetySteeringIncludesEmergencyInfo:
     @settings(max_examples=100, database=None)
     @given(danger_level=_elevated_danger_st)
     def test_elevated_danger_has_safety_actions(self, danger_level: str) -> None:
-        """Feature: aws-agentcore-mcp-infrastructure, Property 21: Safety steering includes emergency info for elevated fire danger.
+        """Property 21: Safety steering includes emergency info for elevated fire danger.
 
         For any elevated fire danger level, the safety guidance SHALL include
         non-empty danger-level-appropriate safety action recommendations.
@@ -280,7 +268,7 @@ class TestProperty21SafetySteeringIncludesEmergencyInfo:
     @settings(max_examples=100, database=None)
     @given(danger_level=_elevated_danger_st)
     def test_elevated_danger_response_contains_000(self, danger_level: str) -> None:
-        """Feature: aws-agentcore-mcp-infrastructure, Property 21: Safety steering includes emergency info for elevated fire danger.
+        """Property 21: Safety steering includes emergency info for elevated fire danger.
 
         For any elevated fire danger level, the steered response contains "000".
 
@@ -294,7 +282,7 @@ class TestProperty21SafetySteeringIncludesEmergencyInfo:
     @settings(max_examples=100, database=None)
     @given(danger_level=_non_elevated_danger_st)
     def test_non_elevated_danger_no_warning(self, danger_level: str) -> None:
-        """Feature: aws-agentcore-mcp-infrastructure, Property 21: Safety steering includes emergency info for elevated fire danger.
+        """Property 21: Safety steering includes emergency info for elevated fire danger.
 
         For any non-elevated fire danger level (low, moderate), the safety
         guidance SHALL NOT require a warning and SHALL have empty emergency contact.
@@ -302,12 +290,6 @@ class TestProperty21SafetySteeringIncludesEmergencyInfo:
         **Validates: Requirements 17.7**
         """
         result = get_safety_guidance(danger_level)
-        assert result["requires_warning"] is False, (
-            f"Expected requires_warning=False for danger level '{danger_level}'"
-        )
-        assert result["emergency_contact"] == "", (
-            f"Expected empty emergency_contact for danger level '{danger_level}'"
-        )
-        assert result["recommended_actions"] == [], (
-            f"Expected empty actions for danger level '{danger_level}'"
-        )
+        assert result["requires_warning"] is False, f"Expected requires_warning=False for danger level '{danger_level}'"
+        assert result["emergency_contact"] == "", f"Expected empty emergency_contact for danger level '{danger_level}'"
+        assert result["recommended_actions"] == [], f"Expected empty actions for danger level '{danger_level}'"

@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -37,13 +36,15 @@ _PATCH_TARGET = "services.mcp_servers.wildlife_sightings.server._get_table"
 _species_st = st.text(min_size=1, max_size=50)
 _lat_st = st.floats(min_value=-44.0, max_value=-10.0, allow_nan=False, allow_infinity=False)
 _lng_st = st.floats(min_value=113.0, max_value=154.0, allow_nan=False, allow_infinity=False)
-_status_st = st.sampled_from([
-    "critically_endangered",
-    "endangered",
-    "vulnerable",
-    "near_threatened",
-    "least_concern",
-])
+_status_st = st.sampled_from(
+    [
+        "critically_endangered",
+        "endangered",
+        "vulnerable",
+        "near_threatened",
+        "least_concern",
+    ]
+)
 _date_st = st.dates().map(lambda d: d.isoformat())
 _notes_st = st.text(min_size=0, max_size=100)
 

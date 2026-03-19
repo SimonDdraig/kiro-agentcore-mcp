@@ -88,9 +88,7 @@ class TestProperty19SkillActivationReturnsFullInstructions:
         fm = _parse_frontmatter(content)
 
         assert "name" in fm, f"Frontmatter missing 'name' for skill {skill_name}"
-        assert fm["name"] == skill_name, (
-            f"Frontmatter name '{fm['name']}' does not match directory name '{skill_name}'"
-        )
+        assert fm["name"] == skill_name, f"Frontmatter name '{fm['name']}' does not match directory name '{skill_name}'"
 
     @settings(max_examples=100, database=None)
     @given(skill_name=_skill_names_st)
@@ -159,9 +157,7 @@ class TestProperty19SkillActivationReturnsFullInstructions:
         content = _read_skill(skill_name)
         fm = _parse_frontmatter(content)
 
-        assert fm["name"] in content, (
-            f"Skill name '{fm['name']}' not found in complete SKILL.md content"
-        )
+        assert fm["name"] in content, f"Skill name '{fm['name']}' not found in complete SKILL.md content"
 
     @settings(max_examples=100, database=None)
     @given(skill_name=_skill_names_st)
@@ -176,9 +172,7 @@ class TestProperty19SkillActivationReturnsFullInstructions:
         content = _read_skill(skill_name)
         fm = _parse_frontmatter(content)
 
-        assert fm["description"] in content, (
-            f"Skill description not found in complete SKILL.md content"
-        )
+        assert fm["description"] in content, "Skill description not found in complete SKILL.md content"
 
     @settings(max_examples=100, database=None)
     @given(skill_name=_skill_names_st)
@@ -194,6 +188,4 @@ class TestProperty19SkillActivationReturnsFullInstructions:
         fm = _parse_frontmatter(content)
 
         for tool in fm["allowed-tools"]:
-            assert tool in content, (
-                f"Tool '{tool}' from allowed-tools not found in SKILL.md content for {skill_name}"
-            )
+            assert tool in content, f"Tool '{tool}' from allowed-tools not found in SKILL.md content for {skill_name}"

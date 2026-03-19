@@ -41,11 +41,7 @@ def _should_exclude(path: Path) -> bool:
 
 def _discover_python_files() -> list[Path]:
     """Discover all .py files in the project, excluding vendored/generated dirs."""
-    return [
-        p
-        for p in _PROJECT_ROOT.rglob("*.py")
-        if not _should_exclude(p.relative_to(_PROJECT_ROOT))
-    ]
+    return [p for p in _PROJECT_ROOT.rglob("*.py") if not _should_exclude(p.relative_to(_PROJECT_ROOT))]
 
 
 def _discover_typescript_files() -> list[Path]:
@@ -55,11 +51,7 @@ def _discover_typescript_files() -> list[Path]:
         return []
     ts_files: list[Path] = []
     for ext in ("*.ts", "*.tsx"):
-        ts_files.extend(
-            p
-            for p in frontend_src.rglob(ext)
-            if not _should_exclude(p.relative_to(_PROJECT_ROOT))
-        )
+        ts_files.extend(p for p in frontend_src.rglob(ext) if not _should_exclude(p.relative_to(_PROJECT_ROOT)))
     return ts_files
 
 

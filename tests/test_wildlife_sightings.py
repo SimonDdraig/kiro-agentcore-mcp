@@ -249,9 +249,7 @@ class TestQueryByLocation:
         assert result["count"] == 1
         # Verify scan was called with a FilterExpression
         call_kwargs = mock_table.scan.call_args
-        assert "FilterExpression" in call_kwargs.kwargs or (
-            call_kwargs.args and "FilterExpression" in str(call_kwargs)
-        )
+        assert "FilterExpression" in call_kwargs.kwargs or (call_kwargs.args and "FilterExpression" in str(call_kwargs))
 
 
 # ===================================================================

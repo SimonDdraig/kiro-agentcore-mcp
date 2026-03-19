@@ -105,9 +105,7 @@ class TestProperty11DynamoDBOnDemandBilling:
         template.has_resource_properties(
             "AWS::DynamoDB::Table",
             {
-                "KeySchema": Match.array_with(
-                    [{"AttributeName": "species", "KeyType": "HASH"}]
-                ),
+                "KeySchema": Match.array_with([{"AttributeName": "species", "KeyType": "HASH"}]),
             },
         )
 
@@ -116,9 +114,7 @@ class TestProperty11DynamoDBOnDemandBilling:
         template.has_resource_properties(
             "AWS::DynamoDB::Table",
             {
-                "KeySchema": Match.array_with(
-                    [{"AttributeName": "date_location", "KeyType": "RANGE"}]
-                ),
+                "KeySchema": Match.array_with([{"AttributeName": "date_location", "KeyType": "RANGE"}]),
             },
         )
 
@@ -217,12 +213,8 @@ class TestProperty12IAMLeastPrivilege:
                                     "Effect": "Allow",
                                     "Resource": Match.array_with(
                                         [
-                                            Match.string_like_regexp(
-                                                ".*anthropic\\.claude-sonnet.*"
-                                            ),
-                                            Match.string_like_regexp(
-                                                ".*anthropic\\.claude-haiku.*"
-                                            ),
+                                            Match.string_like_regexp(".*anthropic\\.claude-sonnet.*"),
+                                            Match.string_like_regexp(".*anthropic\\.claude-haiku.*"),
                                         ]
                                     ),
                                 }
@@ -244,9 +236,7 @@ class TestProperty12IAMLeastPrivilege:
                             [
                                 Match.object_like(
                                     {
-                                        "Principal": {
-                                            "Service": "bedrock.amazonaws.com"
-                                        },
+                                        "Principal": {"Service": "bedrock.amazonaws.com"},
                                     }
                                 )
                             ]
@@ -311,9 +301,7 @@ class TestProperty16FrontendInfrastructure:
             {
                 "DistributionConfig": Match.object_like(
                     {
-                        "DefaultCacheBehavior": Match.object_like(
-                            {"ViewerProtocolPolicy": "redirect-to-https"}
-                        ),
+                        "DefaultCacheBehavior": Match.object_like({"ViewerProtocolPolicy": "redirect-to-https"}),
                     }
                 ),
             },
@@ -324,9 +312,7 @@ class TestProperty16FrontendInfrastructure:
         template.has_resource_properties(
             "AWS::CloudFront::Distribution",
             {
-                "DistributionConfig": Match.object_like(
-                    {"DefaultRootObject": "index.html"}
-                ),
+                "DistributionConfig": Match.object_like({"DefaultRootObject": "index.html"}),
             },
         )
 
@@ -365,9 +351,7 @@ class TestProperty16FrontendInfrastructure:
         template.has_resource_properties(
             "AWS::CloudFront::Distribution",
             {
-                "DistributionConfig": Match.object_like(
-                    {"PriceClass": "PriceClass_100"}
-                ),
+                "DistributionConfig": Match.object_like({"PriceClass": "PriceClass_100"}),
             },
         )
 
@@ -395,9 +379,7 @@ class TestProperty16FrontendInfrastructure:
         template.has_resource_properties(
             "AWS::Cognito::UserPool",
             {
-                "AdminCreateUserConfig": Match.object_like(
-                    {"AllowAdminCreateUserOnly": True}
-                ),
+                "AdminCreateUserConfig": Match.object_like({"AllowAdminCreateUserOnly": True}),
             },
         )
 

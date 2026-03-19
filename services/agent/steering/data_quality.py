@@ -72,14 +72,10 @@ def validate_sighting_input(
     errors: list[str] = []
 
     if not (LATITUDE_MIN <= latitude <= LATITUDE_MAX):
-        errors.append(
-            f"Latitude {latitude} is outside Australian bounds ({LATITUDE_MIN} to {LATITUDE_MAX})"
-        )
+        errors.append(f"Latitude {latitude} is outside Australian bounds ({LATITUDE_MIN} to {LATITUDE_MAX})")
 
     if not (LONGITUDE_MIN <= longitude <= LONGITUDE_MAX):
-        errors.append(
-            f"Longitude {longitude} is outside Australian bounds ({LONGITUDE_MIN} to {LONGITUDE_MAX})"
-        )
+        errors.append(f"Longitude {longitude} is outside Australian bounds ({LONGITUDE_MIN} to {LONGITUDE_MAX})")
 
     if conservation_status not in VALID_CONSERVATION_STATUSES:
         errors.append(
