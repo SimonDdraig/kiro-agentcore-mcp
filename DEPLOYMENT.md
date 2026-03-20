@@ -5,7 +5,7 @@
 - AWS CLI configured with credentials (`aws configure`)
 - Node.js 18+ and npm
 - Python 3.11+ with virtualenv set up at `bush-ranger-venv/`
-- AWS CDK CLI installed (`npm install -g aws-cdk`)
+- AWS CDK CLI installed (`npm install -g aws-cdk`) if not already installed
 
 ## Steps
 
@@ -42,7 +42,7 @@ cd frontend && npx vitest --run && cd ..
 Run once per AWS account/region. Creates the CDKToolkit stack with an S3 bucket and IAM roles needed for deployment.
 
 ```bash
-cdk bootstrap
+cd infra && cdk bootstrap && cd ..
 ```
 
 ### 6. Synthesize (optional)
@@ -50,13 +50,13 @@ cdk bootstrap
 Preview the CloudFormation template before deploying:
 
 ```bash
-cdk synth
+cd infra && cdk synth && cd ..
 ```
 
 ### 7. Deploy
 
 ```bash
-cdk deploy
+cd infra && cdk deploy && cd ..
 ```
 
 CDK will show a summary of IAM changes and ask for confirmation. The stack outputs will display:
@@ -84,7 +84,7 @@ The ranger will be prompted to set a permanent password on first sign-in.
 ## Teardown
 
 ```bash
-cdk destroy
+cd infra && cdk destroy && cd ..
 ```
 
 This removes all resources. The S3 buckets have `autoDeleteObjects` and `DESTROY` removal policy enabled for dev use.

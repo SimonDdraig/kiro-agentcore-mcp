@@ -1,8 +1,8 @@
 {
-  "app": "python3 infra/app.py",
+  "app": "python3 app.py",
   "watch": {
-    "include": ["infra/**", "models/**", "services/**"],
-    "exclude": ["**/__pycache__", "*.pyc", "tests/**"]
+    "include": ["**", "../models/**", "../services/**"],
+    "exclude": ["**/__pycache__", "*.pyc", "../tests/**"]
   },
   "context": {
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
