@@ -430,3 +430,206 @@ class TestProperty16FrontendInfrastructure:
         """CloudFront Origin Access Control resource exists."""
         resources = template.find_resources("AWS::CloudFront::OriginAccessControl")
         assert len(resources) >= 1, f"Expected at least 1 OAC resource, found {len(resources)}"
+
+
+# ------------------------------------------------------------------
+# Feature: bedrock-knowledge-base, Property 1: Knowledge Base resource is correctly configured
+# ------------------------------------------------------------------
+class TestProperty1KnowledgeBaseResource:
+    """Validates: Requirements 1.1, 1.2 — KB resource with Titan embeddings v2 and S3 storage."""
+
+    # Feature: bedrock-knowledge-base, Property 1: Knowledge Base resource is correctly configured
+    def test_knowledge_base_resource_exists(self, template: Template) -> None:
+        template.resource_count_is("AWS::Bedrock::KnowledgeBase", 1)
+
+    # Feature: bedrock-knowledge-base, Property 1: Knowledge Base resource is correctly configured
+    def test_knowledge_base_uses_titan_embeddings_v2(self, template: Template) -> None:
+        template.has_resource_properties(
+            "AWS::Bedrock::KnowledgeBase",
+            {
+                "KnowledgeBaseConfiguration": Match.object_like(
+                    {
+                        "Type": "VECTOR",
+                        "VectorKnowledgeBaseConfiguration": {
+                            "EmbeddingModelArn": Match.string_like_regexp(".*amazon\\.titan-embed-text-v2.*"),
+                        },
+                    }
+                ),
+            },
+        )
+
+    # Feature: bedrock-knowledge-base, Property 1: Knowledge Base resource is correctly configured
+    def test_knowledge_base_has_s3_storage_config(self, template: Template) -> None:
+        template.has_resource_properties(
+            "AWS::Bedrock::KnowledgeBase",
+            {
+                "StorageConfiguration": Match.object_like(
+                    {
+                        "Type": "S3",
+                    }
+                ),
+            },
+        )
+
+
+# ------------------------------------------------------------------
+# Feature: bedrock-knowledge-base, Property 2: Data Source references docs bucket with correct chunking
+# ------------------------------------------------------------------
+class TestProperty2DataSourceChunking:
+    """Validates: Requirements 1.3, 1.6 — Data Source with docs bucket and fixed-size chunking."""
+
+    # Feature: bedrock-knowledge-base, Property 2: Data Source references docs bucket with correct chunking
+    def test_data_source_resource_exists(self, template: Template) -> None:
+        template.resource_count_is("AWS::Bedrock::DataSource", 1)
+
+    # Feature: bedrock-knowledge-base, Property 2: Data Source references docs bucket with correct chunking
+    def test_data_source_references_docs_bucket(self, template: Template) -> None:
+        template.has_resource_properties(
+            "AWS::Bedrock::DataSource",
+            {
+                "DataSourceConfiguration": Match.object_like(
+                    {
+                        "Type": "S3",
+                        "S3Configuration": Match.object_like(
+                            {
+                                "BucketArn": Match.any_value(),
+                            }
+                        ),
+                    }
+                ),
+            },
+        )
+
+    # Feature: bedrock-knowledge-base, Property 2: Data Source references docs bucket with correct chunking
+    def test_data_source_fixed_size_chunking_strategy(self, template: Template) -> None:
+        template.has_resource_properties(
+            "AWS::Bedrock::DataSource",
+            {
+                "VectorIngestionConfiguration": Match.object_like(
+                    {
+                        "ChunkingConfiguration": Match.object_like(
+                            {
+                                "ChunkingStrategy": "FIXED_SIZE",
+                                "FixedSizeChunkingConfiguration": {
+                                    "MaxTokens": 300,
+                                    "OverlapPercentage": 20,
+                                },
+                            }
+                        ),
+                    }
+                ),
+            },
+        )
+
+
+# ------------------------------------------------------------------
+# Feature: bedrock-knowledge-base, Property 3: IAM roles have correct least-privilege permissions
+# ------------------------------------------------------------------
+class TestProperty3IAMPermissions:
+    """Validates: Requirements 1.4, 4.1, 4.2 — KB role and docs role permissions."""
+
+    # Feature: bedrock-knowledge-base, Property 3: IAM roles have correct least-privilege permissions
+    def test_kb_role_has_s3_get_object(self, template: Template) -> None:
+        template.has_resource_properties(
+            "AWS::IAM::Policy",
+            {
+                "PolicyDocument": {
+                    "Statement": Match.array_with(
+                        [
+                            Match.object_like(
+                                {
+                                    "Action": "s3:GetObject",
+                                    "Effect": "Allow",
+                                }
+                            )
+                        ]
+                    ),
+                },
+            },
+        )
+
+    # Feature: bedrock-knowledge-base, Property 3: IAM roles have correct least-privilege permissions
+    def test_kb_role_has_bedrock_invoke_model(self, template: Template) -> None:
+        template.has_resource_properties(
+            "AWS::IAM::Policy",
+            {
+                "PolicyDocument": {
+                    "Statement": Match.array_with(
+                        [
+                            Match.object_like(
+                                {
+                                    "Action": "bedrock:InvokeModel",
+                                    "Effect": "Allow",
+                                    "Resource": Match.string_like_regexp(".*amazon\\.titan-embed-text-v2.*"),
+                                }
+                            )
+                        ]
+                    ),
+                },
+            },
+        )
+
+    # Feature: bedrock-knowledge-base, Property 3: IAM roles have correct least-privilege permissions
+    def test_docs_role_has_bedrock_retrieve(self, template: Template) -> None:
+        template.has_resource_properties(
+            "AWS::IAM::Policy",
+            {
+                "PolicyDocument": {
+                    "Statement": Match.array_with(
+                        [
+                            Match.object_like(
+                                {
+                                    "Action": "bedrock:Retrieve",
+                                    "Effect": "Allow",
+                                }
+                            )
+                        ]
+                    ),
+                },
+            },
+        )
+
+    # Feature: bedrock-knowledge-base, Property 3: IAM roles have correct least-privilege permissions
+    def test_docs_role_retains_s3_permissions(self, template: Template) -> None:
+        template.has_resource_properties(
+            "AWS::IAM::Policy",
+            {
+                "PolicyDocument": {
+                    "Statement": Match.array_with(
+                        [
+                            Match.object_like(
+                                {
+                                    "Action": Match.array_with(["s3:GetObject", "s3:ListBucket"]),
+                                    "Effect": "Allow",
+                                }
+                            )
+                        ]
+                    ),
+                },
+            },
+        )
+
+
+# ------------------------------------------------------------------
+# Feature: bedrock-knowledge-base, Property 4: Stack outputs include Knowledge Base and Data Source IDs
+# ------------------------------------------------------------------
+class TestProperty4StackOutputs:
+    """Validates: Requirement 1.5 — Stack outputs for KB ID and DS ID."""
+
+    # Feature: bedrock-knowledge-base, Property 4: Stack outputs include Knowledge Base and Data Source IDs
+    def test_knowledge_base_id_output_exists(self, template: Template) -> None:
+        template.has_output(
+            "KnowledgeBaseId",
+            {
+                "Description": Match.string_like_regexp(".*Knowledge Base.*"),
+            },
+        )
+
+    # Feature: bedrock-knowledge-base, Property 4: Stack outputs include Knowledge Base and Data Source IDs
+    def test_data_source_id_output_exists(self, template: Template) -> None:
+        template.has_output(
+            "DataSourceId",
+            {
+                "Description": Match.string_like_regexp(".*Data Source.*"),
+            },
+        )

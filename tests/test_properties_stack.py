@@ -37,6 +37,7 @@ _ALLOWED_ACTIONS: dict[str, set[str]] = {
     "docs": {
         "s3:GetObject",
         "s3:ListBucket",
+        "bedrock:Retrieve",
         "logs:CreateLogStream",
         "logs:PutLogEvents",
     },
@@ -48,6 +49,10 @@ _ALLOWED_ACTIONS: dict[str, set[str]] = {
         "bedrock:InvokeModel",
         "logs:CreateLogStream",
         "logs:PutLogEvents",
+    },
+    "kb": {
+        "s3:GetObject",
+        "bedrock:InvokeModel",
     },
 }
 

@@ -171,7 +171,7 @@ class TestSearchDocuments:
         ]
 
         with patch(_PATCH_TARGET, return_value=mock_s3):
-            result = search_documents(keyword="eucalyptus")
+            result = search_documents(query="eucalyptus")
 
         assert result["count"] == 1
         assert result["results"][0]["key"] == "species/koala.md"
@@ -186,7 +186,7 @@ class TestSearchDocuments:
         }
 
         with patch(_PATCH_TARGET, return_value=mock_s3):
-            result = search_documents(keyword="dinosaur")
+            result = search_documents(query="dinosaur")
 
         assert result["count"] == 0
         assert result["results"] == []
@@ -207,9 +207,169 @@ class TestSearchDocuments:
         }
 
         with patch(_PATCH_TARGET, return_value=mock_s3):
-            result = search_documents(keyword="koala")
+            result = search_documents(query="koala")
 
         assert result["count"] == 1
         assert result["results"][0]["key"] == "species/koala.md"
         # get_object should only be called once (for the .md file, not the .pdf)
         assert mock_s3.get_object.call_count == 1
+
+
+# ===================================================================
+# Semantic search (Bedrock Knowledge Base)
+# ===================================================================
+_PATCH_BEDROCK = "services.mcp_servers.conservation_docs.server._get_bedrock_agent_runtime_client"
+_PATCH_KB_ID = "services.mcp_servers.conservation_docs.server._KNOWLEDGE_BASE_ID"
+
+
+def _make_retrieval_result(
+    uri: str = "s3://bush-ranger-docs-123456789012-us-east-1/species/koala.md",
+    text: str = "Koalas are marsupials native to Australia.",
+    score: float = 0.87,
+) -> dict[str, Any]:
+    """Build a single Bedrock retrievalResults entry."""
+    return {
+        "content": {"text": text},
+        "location": {"type": "S3", "s3Location": {"uri": uri}},
+        "score": score,
+    }
+
+
+class TestSemanticSearch:
+    """Tests for the Bedrock Knowledge Base semantic search path."""
+
+    def test_semantic_search_returns_structured_results(self) -> None:
+        """Semantic search returns results with required fields."""
+        mock_bedrock = MagicMock()
+        mock_bedrock.retrieve.return_value = {
+            "retrievalResults": [
+                _make_retrieval_result(
+                    uri="s3://bucket/species/koala.md",
+                    text="Koalas eat eucalyptus.",
+                    score=0.92,
+                ),
+                _make_retrieval_result(
+                    uri="s3://bucket/emergency/bushfire_response.md",
+                    text="Bushfire emergency procedures.",
+                    score=0.78,
+                ),
+            ],
+        }
+
+        with (
+            patch(_PATCH_BEDROCK, return_value=mock_bedrock),
+            patch(_PATCH_KB_ID, "kb-test-id"),
+        ):
+            result = search_documents(query="koala habitat")
+
+        assert result["count"] == 2
+        assert len(result["results"]) == 2
+
+        first = result["results"][0]
+        assert first["source_uri"] == "s3://bucket/species/koala.md"
+        assert first["document_key"] == "species/koala.md"
+        assert first["category"] == "species"
+        assert first["text"] == "Koalas eat eucalyptus."
+        assert first["score"] == 0.92
+
+        second = result["results"][1]
+        assert second["source_uri"] == "s3://bucket/emergency/bushfire_response.md"
+        assert second["document_key"] == "emergency/bushfire_response.md"
+        assert second["category"] == "emergency"
+
+    def test_search_returns_structured_error_on_client_error(self) -> None:
+        """Bedrock ClientError returns structured error dict."""
+        mock_bedrock = MagicMock()
+        mock_bedrock.retrieve.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "Not authorized"}},
+            "Retrieve",
+        )
+
+        with (
+            patch(_PATCH_BEDROCK, return_value=mock_bedrock),
+            patch(_PATCH_KB_ID, "kb-test-id"),
+        ):
+            result = search_documents(query="koala")
+
+        assert result["error"] == "retrieval_error"
+        assert "message" in result
+        assert "Failed to retrieve" in result["message"]
+
+    def test_fallback_logs_warning_when_kb_id_missing(self) -> None:
+        """When _KNOWLEDGE_BASE_ID is None, a warning is logged."""
+        mock_s3 = MagicMock()
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [{"Contents": []}]
+        mock_s3.get_paginator.return_value = mock_paginator
+
+        with (
+            patch(_PATCH_TARGET, return_value=mock_s3),
+            patch(_PATCH_KB_ID, None),
+            patch("services.mcp_servers.conservation_docs.server.logger") as mock_logger,
+        ):
+            search_documents(query="koala")
+
+        mock_logger.warning.assert_called_once()
+        assert "KNOWLEDGE_BASE_ID" in mock_logger.warning.call_args[0][0]
+
+    def test_list_and_get_do_not_use_bedrock(self) -> None:
+        """list_documents and get_document never call the Bedrock client."""
+        mock_s3 = MagicMock()
+        mock_s3.list_objects_v2.return_value = {
+            "Contents": [_make_s3_object("species/"), _make_s3_object("species/koala.md")],
+        }
+        mock_s3.get_object.return_value = {"Body": _make_body("# Koala")}
+
+        mock_bedrock = MagicMock()
+
+        with (
+            patch(_PATCH_TARGET, return_value=mock_s3),
+            patch(_PATCH_BEDROCK, return_value=mock_bedrock),
+        ):
+            list_documents(category="species")
+            get_document(document_key="species/koala.md")
+
+        mock_bedrock.retrieve.assert_not_called()
+
+    def test_unparseable_uri_skipped(self) -> None:
+        """Results with unparseable S3 URIs are skipped."""
+        mock_bedrock = MagicMock()
+        # Use a result where the uri value is None (causes _parse_s3_uri to raise)
+        # alongside a valid result to verify only the valid one is returned.
+        mock_bedrock.retrieve.return_value = {
+            "retrievalResults": [
+                {
+                    "content": {"text": "bad result"},
+                    "location": {"s3Location": {"uri": None}},
+                    "score": 0.5,
+                },
+                _make_retrieval_result(
+                    uri="s3://bucket/species/platypus.md",
+                    text="Platypus info.",
+                    score=0.8,
+                ),
+            ],
+        }
+
+        with (
+            patch(_PATCH_BEDROCK, return_value=mock_bedrock),
+            patch(_PATCH_KB_ID, "kb-test-id"),
+        ):
+            result = search_documents(query="platypus")
+
+        # Only the valid result should be present
+        assert result["count"] == 1
+        assert result["results"][0]["document_key"] == "species/platypus.md"
+
+    def test_empty_retrieval_results(self) -> None:
+        """Empty retrievalResults returns {"results": [], "count": 0}."""
+        mock_bedrock = MagicMock()
+        mock_bedrock.retrieve.return_value = {"retrievalResults": []}
+
+        with (
+            patch(_PATCH_BEDROCK, return_value=mock_bedrock),
+            patch(_PATCH_KB_ID, "kb-test-id"),
+        ):
+            result = search_documents(query="anything")
+
+        assert result == {"results": [], "count": 0}

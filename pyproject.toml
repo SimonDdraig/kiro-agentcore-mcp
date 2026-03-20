@@ -19,7 +19,7 @@ extend-select = ["D100", "D101", "D102", "D103"]
 
 [tool.ruff.lint.per-file-ignores]
 "infra/stacks/bush_ranger_stack.py" = ["E402"]
-"tests/**/*.py" = ["S101", "D103", "E402"]
+"tests/**/*.py" = ["S101", "D102", "D103", "E402"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -40,6 +40,7 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
+exclude = ["infra/cdk\\.out/"]
 
 [[tool.mypy.overrides]]
 module = "aws_cdk.*"

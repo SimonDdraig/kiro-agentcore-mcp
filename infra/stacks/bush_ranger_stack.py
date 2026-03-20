@@ -67,6 +67,11 @@ class BushRangerStack(Stack):
         self.docs_bucket = self._create_docs_bucket()
 
         # ----------------------------------------------------------------
+        # Bedrock Knowledge Base (semantic search)
+        # ----------------------------------------------------------------
+        self.knowledge_base, self.data_source = self._create_knowledge_base()
+
+        # ----------------------------------------------------------------
         # 7.4  S3 Frontend Bucket
         # ----------------------------------------------------------------
         self.frontend_bucket = self._create_frontend_bucket()
@@ -169,6 +174,89 @@ class BushRangerStack(Stack):
         )
 
         return bucket
+
+    # ------------------------------------------------------------------
+    # Bedrock Knowledge Base
+    # ------------------------------------------------------------------
+    def _create_knowledge_base(self) -> tuple[CfnResource, CfnResource]:
+        """Create a Bedrock Knowledge Base with S3 vector store and data source.
+
+        Returns a tuple of (knowledge_base, data_source) CfnResources.
+        """
+        embedding_model_arn = "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0"
+
+        # IAM role for the Knowledge Base
+        self.kb_role = iam.Role(
+            self,
+            "KnowledgeBaseRole",
+            assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
+            description="Role for Bedrock Knowledge Base to read docs and invoke embeddings",
+        )
+        self.kb_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject"],
+                resources=[f"{self.docs_bucket.bucket_arn}/*"],
+            )
+        )
+        self.kb_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=[embedding_model_arn],
+            )
+        )
+
+        # Knowledge Base (CfnResource — no L2 construct available)
+        knowledge_base = CfnResource(
+            self,
+            "BedrockKnowledgeBase",
+            type="AWS::Bedrock::KnowledgeBase",
+            properties={
+                "Name": "bush-ranger-knowledge-base",
+                "Description": "Knowledge Base for Bush Ranger conservation documents",
+                "RoleArn": self.kb_role.role_arn,
+                "KnowledgeBaseConfiguration": {
+                    "Type": "VECTOR",
+                    "VectorKnowledgeBaseConfiguration": {
+                        "EmbeddingModelArn": embedding_model_arn,
+                    },
+                },
+                "StorageConfiguration": {
+                    "Type": "S3",
+                    "S3Configuration": {
+                        "BucketArn": self.docs_bucket.bucket_arn,
+                    },
+                },
+            },
+        )
+
+        # Data Source with fixed-size chunking
+        data_source = CfnResource(
+            self,
+            "BedrockDataSource",
+            type="AWS::Bedrock::DataSource",
+            properties={
+                "Name": "bush-ranger-docs-datasource",
+                "Description": "Data source for conservation documents from S3",
+                "KnowledgeBaseId": knowledge_base.ref,
+                "DataSourceConfiguration": {
+                    "Type": "S3",
+                    "S3Configuration": {
+                        "BucketArn": self.docs_bucket.bucket_arn,
+                    },
+                },
+                "VectorIngestionConfiguration": {
+                    "ChunkingConfiguration": {
+                        "ChunkingStrategy": "FIXED_SIZE",
+                        "FixedSizeChunkingConfiguration": {
+                            "MaxTokens": 300,
+                            "OverlapPercentage": 20,
+                        },
+                    },
+                },
+            },
+        )
+
+        return knowledge_base, data_source
 
     # ------------------------------------------------------------------
     # 7.4  S3 Frontend Bucket
@@ -383,6 +471,12 @@ class BushRangerStack(Stack):
         )
         docs_role.add_to_policy(
             iam.PolicyStatement(
+                actions=["bedrock:Retrieve"],
+                resources=[self.knowledge_base.get_att("KnowledgeBaseArn").to_string()],
+            )
+        )
+        docs_role.add_to_policy(
+            iam.PolicyStatement(
                 actions=["logs:CreateLogStream", "logs:PutLogEvents"],
                 resources=[self.log_groups["conservation_docs"].log_group_arn],
             )
@@ -465,6 +559,9 @@ class BushRangerStack(Stack):
                 "Description": "MCP server for conservation documents backed by S3",
                 "RoleArn": self.iam_roles["conservation_docs"].role_arn,
                 "LogGroupName": self.log_groups["conservation_docs"].log_group_name,
+                "Environment": {
+                    "KNOWLEDGE_BASE_ID": self.knowledge_base.ref,
+                },
             },
         )
 
@@ -577,4 +674,20 @@ class BushRangerStack(Stack):
             value=cdk.Fn.join("", ["https://", self.http_api.ref, ".execute-api.", self.region, ".amazonaws.com"]),
             description="HTTP API Gateway endpoint URL",
             export_name="BushRangerApiGatewayUrl",
+        )
+
+        CfnOutput(
+            self,
+            "KnowledgeBaseId",
+            value=self.knowledge_base.ref,
+            description="Bedrock Knowledge Base ID",
+            export_name="BushRangerKnowledgeBaseId",
+        )
+
+        CfnOutput(
+            self,
+            "DataSourceId",
+            value=self.data_source.ref,
+            description="Bedrock Knowledge Base Data Source ID",
+            export_name="BushRangerDataSourceId",
         )

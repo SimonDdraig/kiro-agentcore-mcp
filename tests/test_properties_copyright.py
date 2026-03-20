@@ -31,6 +31,7 @@ _EXCLUDED_DIRS = {
     ".hypothesis",
     ".pytest_cache",
     ".vscode",
+    "cdk.out",
 }
 
 
