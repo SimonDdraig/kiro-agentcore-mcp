@@ -229,9 +229,9 @@ class BushRangerStack(Stack):
                     },
                 },
                 "StorageConfiguration": {
-                    "Type": "S3",
-                    "S3Configuration": {
-                        "BucketArn": self.docs_bucket.bucket_arn,
+                    "Type": "S3_VECTORS",
+                    "S3VectorsConfiguration": {
+                        "VectorBucketArn": self.docs_bucket.bucket_arn,
                     },
                 },
             },
@@ -573,27 +573,42 @@ class BushRangerStack(Stack):
         return roles
 
     # ------------------------------------------------------------------
-    # 7.9  AgentCore Runtimes
+    # 7.9  AgentCore Runtimes & Gateway
     # ------------------------------------------------------------------
     def _create_agentcore_runtimes(
         self,
     ) -> tuple[CfnResource, dict[str, CfnResource]]:
-        """Create AgentCore agent runtime and MCP server runtimes.
+        """Create AgentCore runtimes for the agent and MCP servers, plus a Gateway.
 
-        Uses CfnResource since L2 constructs for AgentCore may not yet exist.
+        Architecture:
+        - Each MCP server is an ``AWS::BedrockAgentCore::Runtime`` with
+          ``ProtocolConfiguration: MCP`` and its code packaged as an S3 asset.
+        - The Strands agent is an ``AWS::BedrockAgentCore::Runtime``.
+        - An ``AWS::BedrockAgentCore::Gateway`` connects the agent to the
+          MCP server runtimes via ``GatewayTarget`` resources.
         """
+        _network_public: dict[str, str] = {"NetworkMode": "PUBLIC"}
+
         mcp_servers: dict[str, CfnResource] = {}
 
         # Wildlife Sightings MCP Server Runtime
         mcp_servers["wildlife_sightings"] = CfnResource(
             self,
             "WildlifeSightingsMcpRuntime",
-            type="AWS::BedrockAgentCore::McpServerRuntime",
+            type="AWS::BedrockAgentCore::Runtime",
             properties={
-                "Name": "wildlife-sightings-server",
+                "AgentRuntimeName": "wildlife_sightings_server",
                 "Description": "MCP server for wildlife sighting records backed by DynamoDB",
                 "RoleArn": self.iam_roles["wildlife_sightings"].role_arn,
-                "LogGroupName": self.log_groups["wildlife_sightings"].log_group_name,
+                "NetworkConfiguration": _network_public,
+                "ProtocolConfiguration": "MCP",
+                "AgentRuntimeArtifact": {
+                    "CodeConfiguration": {
+                        "Code": {"S3": {"Bucket": self.docs_bucket.bucket_name, "Prefix": "runtime/wildlife"}},
+                        "EntryPoint": ["python", "server.py"],
+                        "Runtime": "PYTHON_3_12",
+                    },
+                },
             },
         )
 
@@ -601,14 +616,22 @@ class BushRangerStack(Stack):
         mcp_servers["conservation_docs"] = CfnResource(
             self,
             "ConservationDocsMcpRuntime",
-            type="AWS::BedrockAgentCore::McpServerRuntime",
+            type="AWS::BedrockAgentCore::Runtime",
             properties={
-                "Name": "conservation-docs-server",
+                "AgentRuntimeName": "conservation_docs_server",
                 "Description": "MCP server for conservation documents backed by S3",
                 "RoleArn": self.iam_roles["conservation_docs"].role_arn,
-                "LogGroupName": self.log_groups["conservation_docs"].log_group_name,
-                "Environment": {
+                "NetworkConfiguration": _network_public,
+                "ProtocolConfiguration": "MCP",
+                "EnvironmentVariables": {
                     "KNOWLEDGE_BASE_ID": self.knowledge_base.ref,
+                },
+                "AgentRuntimeArtifact": {
+                    "CodeConfiguration": {
+                        "Code": {"S3": {"Bucket": self.docs_bucket.bucket_name, "Prefix": "runtime/docs"}},
+                        "EntryPoint": ["python", "server.py"],
+                        "Runtime": "PYTHON_3_12",
+                    },
                 },
             },
         )
@@ -617,25 +640,20 @@ class BushRangerStack(Stack):
         mcp_servers["weather"] = CfnResource(
             self,
             "WeatherMcpRuntime",
-            type="AWS::BedrockAgentCore::McpServerRuntime",
+            type="AWS::BedrockAgentCore::Runtime",
             properties={
-                "Name": "weather-server",
+                "AgentRuntimeName": "weather_server",
                 "Description": "MCP server for weather data via Open-Meteo API",
                 "RoleArn": self.iam_roles["weather"].role_arn,
-                "LogGroupName": self.log_groups["weather"].log_group_name,
-            },
-        )
-
-        # Fetch Server (third-party) MCP Server Runtime
-        mcp_servers["fetch"] = CfnResource(
-            self,
-            "FetchMcpRuntime",
-            type="AWS::BedrockAgentCore::McpServerRuntime",
-            properties={
-                "Name": "fetch-server",
-                "Description": "Third-party MCP server (@modelcontextprotocol/server-fetch) for live web content",
-                "ThirdPartyPackage": "@modelcontextprotocol/server-fetch",
-                "LogGroupName": self.log_groups["fetch"].log_group_name,
+                "NetworkConfiguration": _network_public,
+                "ProtocolConfiguration": "MCP",
+                "AgentRuntimeArtifact": {
+                    "CodeConfiguration": {
+                        "Code": {"S3": {"Bucket": self.docs_bucket.bucket_name, "Prefix": "runtime/weather"}},
+                        "EntryPoint": ["python", "server.py"],
+                        "Runtime": "PYTHON_3_12",
+                    },
+                },
             },
         )
 
@@ -643,15 +661,54 @@ class BushRangerStack(Stack):
         agent_runtime = CfnResource(
             self,
             "BushRangerAgentRuntime",
-            type="AWS::BedrockAgentCore::AgentRuntime",
+            type="AWS::BedrockAgentCore::Runtime",
             properties={
-                "Name": "bush-ranger-agent",
+                "AgentRuntimeName": "bush_ranger_agent",
                 "Description": "Bush Ranger AI - Australian Wildlife & Conservation Agent",
                 "RoleArn": self.iam_roles["agent"].role_arn,
-                "LogGroupName": self.log_groups["agent"].log_group_name,
-                "McpServers": [server.ref for server in mcp_servers.values()],
+                "NetworkConfiguration": _network_public,
+                "AgentRuntimeArtifact": {
+                    "CodeConfiguration": {
+                        "Code": {"S3": {"Bucket": self.docs_bucket.bucket_name, "Prefix": "runtime/agent"}},
+                        "EntryPoint": ["python", "agent.py"],
+                        "Runtime": "PYTHON_3_12",
+                    },
+                },
             },
         )
+
+        # Gateway — connects the agent to MCP server tools
+        self.gateway = CfnResource(
+            self,
+            "BushRangerGateway",
+            type="AWS::BedrockAgentCore::Gateway",
+            properties={
+                "Name": "bush-ranger-gateway",
+                "Description": "Gateway connecting Bush Ranger agent to MCP tool servers",
+                "AuthorizerType": "NONE",
+                "ProtocolType": "MCP",
+                "RoleArn": self.iam_roles["agent"].role_arn,
+            },
+        )
+
+        # Gateway Targets — one per MCP server
+        for name, server in mcp_servers.items():
+            CfnResource(
+                self,
+                f"GatewayTarget{name.title().replace('_', '')}",
+                type="AWS::BedrockAgentCore::GatewayTarget",
+                properties={
+                    "Name": f"bush-ranger-{name.replace('_', '-')}",
+                    "GatewayIdentifier": self.gateway.ref,
+                    "TargetConfiguration": {
+                        "Mcp": {
+                            "McpServer": {
+                                "Endpoint": server.get_att("AgentRuntimeArn").to_string(),
+                            },
+                        },
+                    },
+                },
+            )
 
         return agent_runtime, mcp_servers
 
@@ -663,9 +720,17 @@ class BushRangerStack(Stack):
         CfnOutput(
             self,
             "AgentEndpoint",
-            value=self.agent_runtime.ref,
-            description="AgentCore agent runtime endpoint",
+            value=self.agent_runtime.get_att("AgentRuntimeArn").to_string(),
+            description="AgentCore agent runtime ARN",
             export_name="BushRangerAgentEndpoint",
+        )
+
+        CfnOutput(
+            self,
+            "GatewayUrl",
+            value=self.gateway.get_att("GatewayUrl").to_string(),
+            description="AgentCore Gateway URL for MCP tool access",
+            export_name="BushRangerGatewayUrl",
         )
 
         CfnOutput(

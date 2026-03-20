@@ -70,12 +70,16 @@ class TestProperty10StackSynthesisesValidTemplate:
         )
 
     def test_agentcore_agent_runtime_exists(self, template: Template) -> None:
-        """Template contains an AgentCore AgentRuntime resource."""
-        template.resource_count_is("AWS::BedrockAgentCore::AgentRuntime", 1)
+        """Template contains AgentCore Runtime resources (agent + 3 MCP servers)."""
+        template.resource_count_is("AWS::BedrockAgentCore::Runtime", 4)
 
-    def test_agentcore_mcp_server_runtimes_exist(self, template: Template) -> None:
-        """Template contains 4 MCP server runtimes (wildlife, docs, weather, fetch)."""
-        template.resource_count_is("AWS::BedrockAgentCore::McpServerRuntime", 4)
+    def test_agentcore_gateway_exists(self, template: Template) -> None:
+        """Template contains an AgentCore Gateway resource."""
+        template.resource_count_is("AWS::BedrockAgentCore::Gateway", 1)
+
+    def test_agentcore_gateway_targets_exist(self, template: Template) -> None:
+        """Template contains 3 GatewayTarget resources (wildlife, docs, weather)."""
+        template.resource_count_is("AWS::BedrockAgentCore::GatewayTarget", 3)
 
     def test_iam_roles_exist(self, template: Template) -> None:
         """Template contains IAM roles (at least 4: wildlife, docs, weather, agent)."""
