@@ -54,6 +54,9 @@ _ALLOWED_ACTIONS: dict[str, set[str]] = {
         "s3:GetObject",
         "bedrock:InvokeModel",
     },
+    "kb_ingestion": {
+        "bedrock:StartIngestionJob",
+    },
 }
 
 # Union of every allowed action across all roles

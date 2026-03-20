@@ -38,6 +38,9 @@ from aws_cdk import (
 from aws_cdk import (
     aws_s3_deployment as s3deploy,
 )
+from aws_cdk import (
+    custom_resources as cr,
+)
 from constructs import Construct
 
 # Add project root to path so we can import shared models
@@ -70,6 +73,11 @@ class BushRangerStack(Stack):
         # Bedrock Knowledge Base (semantic search)
         # ----------------------------------------------------------------
         self.knowledge_base, self.data_source = self._create_knowledge_base()
+
+        # ----------------------------------------------------------------
+        # Bedrock KB ingestion (auto-sync after doc upload)
+        # ----------------------------------------------------------------
+        self._create_kb_ingestion_trigger()
 
         # ----------------------------------------------------------------
         # 7.4  S3 Frontend Bucket
@@ -257,6 +265,46 @@ class BushRangerStack(Stack):
         )
 
         return knowledge_base, data_source
+
+    def _create_kb_ingestion_trigger(self) -> cr.AwsCustomResource:
+        """Trigger a Bedrock Knowledge Base ingestion job after deploy.
+
+        Uses an AwsCustomResource to call StartIngestionJob so the KB
+        indexes the sample documents automatically during ``cdk deploy``.
+        """
+        kb_id = self.knowledge_base.ref
+        ds_id = self.data_source.ref
+
+        return cr.AwsCustomResource(
+            self,
+            "KBIngestionTrigger",
+            on_create=cr.AwsSdkCall(
+                service="BedrockAgent",
+                action="startIngestionJob",
+                parameters={
+                    "knowledgeBaseId": kb_id,
+                    "dataSourceId": ds_id,
+                },
+                physical_resource_id=cr.PhysicalResourceId.of("kb-ingestion-trigger"),
+            ),
+            on_update=cr.AwsSdkCall(
+                service="BedrockAgent",
+                action="startIngestionJob",
+                parameters={
+                    "knowledgeBaseId": kb_id,
+                    "dataSourceId": ds_id,
+                },
+                physical_resource_id=cr.PhysicalResourceId.of("kb-ingestion-trigger"),
+            ),
+            policy=cr.AwsCustomResourcePolicy.from_statements(
+                [
+                    iam.PolicyStatement(
+                        actions=["bedrock:StartIngestionJob"],
+                        resources=["*"],
+                    ),
+                ]
+            ),
+        )
 
     # ------------------------------------------------------------------
     # 7.4  S3 Frontend Bucket
