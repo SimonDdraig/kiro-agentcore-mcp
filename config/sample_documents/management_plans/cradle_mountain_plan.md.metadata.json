@@ -1,0 +1,12 @@
+{
+  "metadataAttributes": {
+    "category": {
+      "value": "management_plans",
+      "type": "STRING"
+    },
+    "region": {
+      "value": "Tasmania",
+      "type": "STRING"
+    }
+  }
+}

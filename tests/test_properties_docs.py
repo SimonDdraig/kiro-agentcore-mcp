@@ -430,3 +430,74 @@ class TestBedrockKBProperty8FallbackWithoutKBID:
         # Result should still have the expected structure
         assert "results" in result
         assert "count" in result
+
+
+# ===================================================================
+# Property 10: Category filter is correctly passed to Bedrock retrieve
+# ===================================================================
+class TestBedrockKBProperty10CategoryFilter:
+    """Feature: bedrock-knowledge-base, Property 10: Category filter is correctly passed to Bedrock retrieve."""
+
+    @settings(max_examples=100, database=None)
+    @given(
+        category=st.sampled_from(list(CATEGORIES)),
+    )
+    def test_property_10_category_filter_structure(
+        self,
+        category: str,
+    ) -> None:
+        """Feature: bedrock-knowledge-base, Property 10: Category filter is correctly passed to Bedrock retrieve.
+
+        For any valid category from CATEGORIES, the filter passed to Bedrock
+        retrieve has {"equals": {"key": "category", "value": <category>}}.
+
+        **Validates: Requirements 9.1, 9.2, 10.5**
+        """
+        mock_client = MagicMock()
+        mock_client.retrieve.return_value = {"retrievalResults": []}
+
+        with (
+            patch(_BEDROCK_CLIENT_PATCH, return_value=mock_client),
+            patch(_KB_ID_PATCH, "kb-test-id"),
+        ):
+            search_documents(query="test", category=category)
+
+        mock_client.retrieve.assert_called_once()
+        call_kwargs = mock_client.retrieve.call_args
+        vector_config = call_kwargs.kwargs.get("retrievalConfiguration", {}).get("vectorSearchConfiguration", {})
+        if not vector_config:
+            vector_config = call_kwargs[1].get("retrievalConfiguration", {}).get("vectorSearchConfiguration", {})
+
+        assert "filter" in vector_config, f"Expected 'filter' in vectorSearchConfiguration for category={category!r}"
+        expected_filter = {"equals": {"key": "category", "value": category}}
+        assert vector_config["filter"] == expected_filter, (
+            f"Expected filter {expected_filter}, got {vector_config['filter']}"
+        )
+
+    def test_property_10_no_filter_when_category_none(self) -> None:
+        """Feature: bedrock-knowledge-base, Property 10: Category filter is correctly passed to Bedrock retrieve.
+
+        When category is None, the vectorSearchConfiguration in the retrieve
+        call does NOT contain a 'filter' key.
+
+        **Validates: Requirements 9.1, 9.2, 10.5**
+        """
+        mock_client = MagicMock()
+        mock_client.retrieve.return_value = {"retrievalResults": []}
+
+        with (
+            patch(_BEDROCK_CLIENT_PATCH, return_value=mock_client),
+            patch(_KB_ID_PATCH, "kb-test-id"),
+        ):
+            search_documents(query="test", category=None)
+
+        mock_client.retrieve.assert_called_once()
+        call_kwargs = mock_client.retrieve.call_args
+        vector_config = call_kwargs.kwargs.get("retrievalConfiguration", {}).get("vectorSearchConfiguration", {})
+        if not vector_config:
+            vector_config = call_kwargs[1].get("retrievalConfiguration", {}).get("vectorSearchConfiguration", {})
+
+        assert "filter" not in vector_config, (
+            f"Expected no 'filter' in vectorSearchConfiguration when category=None, "
+            f"but found: {vector_config.get('filter')}"
+        )

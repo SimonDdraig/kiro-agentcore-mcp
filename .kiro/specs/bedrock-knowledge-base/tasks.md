@@ -99,3 +99,58 @@ Replace the string-matching `search_documents` tool with semantic search powered
 - Property tests use Hypothesis with `@settings(max_examples=100, database=None)`
 - Tests run with: `bush-ranger-venv/bin/python -m pytest tests/ -v`
 - Frontend tests: `cd frontend && npx vitest --run`
+
+## Metadata Filtering Tasks
+
+- [x] 7. Create metadata sidecar files for all sample documents
+  - [x] 7.1 Create `.metadata.json` files for `species/` documents
+    - Create `config/sample_documents/species/{name}.md.metadata.json` for each of the 12 species documents
+    - Each file contains `metadataAttributes` with `category` (value: `species`, type: `STRING`) and `region` (type: `STRING`) with the relevant Australian region
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+
+  - [x] 7.2 Create `.metadata.json` files for `emergency/` documents
+    - Create `config/sample_documents/emergency/{name}.md.metadata.json` for each of the 7 emergency documents
+    - Each file contains `metadataAttributes` with `category` (value: `emergency`, type: `STRING`) and `region` where applicable
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+
+  - [x] 7.3 Create `.metadata.json` files for `management_plans/` documents
+    - Create `config/sample_documents/management_plans/{name}.md.metadata.json` for each of the 11 management plan documents
+    - Each file contains `metadataAttributes` with `category` (value: `management_plans`, type: `STRING`) and `region` (type: `STRING`) with the relevant park/area region
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+
+- [x] 8. Add category filter to `search_documents` MCP tool
+  - [x] 8.1 Add `category` parameter and validation to `search_documents`
+    - In `services/mcp_servers/conservation_docs/server.py`, add optional `category: str | None = None` parameter to `search_documents`
+    - If `category` is provided and not in `CATEGORIES`, return `{"error": "validation_error", "message": "Invalid category '...'. Must be one of: ..."}`
+    - _Requirements: 9.3_
+
+  - [x] 8.2 Pass metadata filter to Bedrock `retrieve` API
+    - When `category` is provided and valid, add a `filter` key to `vectorSearchConfiguration` with `{"equals": {"key": "category", "value": category}}`
+    - When `category` is `None`, omit the `filter` key entirely
+    - _Requirements: 9.1, 9.2_
+
+- [x] 9. Write tests for metadata filtering
+  - [x] 9.1 Write metadata sidecar file validation tests
+    - Create `tests/test_metadata_files.py` with tests that:
+      - Verify every `.md` file in `config/sample_documents/` has a corresponding `.metadata.json` sidecar
+      - Verify each sidecar has valid `metadataAttributes` with `category` matching the folder name
+      - Verify each sidecar conforms to Bedrock format (value + type fields)
+    - **Property 9: Metadata sidecar files are valid and complete**
+    - **Validates: Requirements 7.1, 7.2, 7.4, 10.1, 10.2**
+
+  - [x] 9.2 Write unit tests for category filter in `search_documents`
+    - Add tests to `tests/test_conservation_docs.py`:
+      - Test that providing a valid `category` passes a metadata filter to Bedrock `retrieve`
+      - Test that omitting `category` performs unfiltered search (no filter key)
+      - Test that providing an invalid `category` returns a validation error without calling Bedrock
+    - **Validates: Requirements 9.1, 9.2, 9.3, 10.3, 10.4**
+
+  - [x] 9.3 Write property test for category filter structure
+    - Add test to `tests/test_properties_docs.py`:
+    - **Property 10: Category filter is correctly passed to Bedrock retrieve**
+    - For any valid category from `CATEGORIES`, verify the filter passed to Bedrock has `{"equals": {"key": "category", "value": <category>}}`
+    - For `None` category, verify no filter is present
+    - **Validates: Requirements 9.1, 9.2, 10.5**
+
+- [x] 10. Checkpoint — Verify all metadata filtering tests pass
+  - Ensure all tests pass including new metadata and filtering tests, ask the user if questions arise.

@@ -1,0 +1,12 @@
+{
+  "metadataAttributes": {
+    "category": {
+      "value": "emergency",
+      "type": "STRING"
+    },
+    "region": {
+      "value": "Australia-wide",
+      "type": "STRING"
+    }
+  }
+}

@@ -373,3 +373,103 @@ class TestSemanticSearch:
             result = search_documents(query="anything")
 
         assert result == {"results": [], "count": 0}
+
+
+# ===================================================================
+# Category filter in search_documents
+# ===================================================================
+
+
+class TestCategoryFilter:
+    """Tests for the optional category filter in search_documents."""
+
+    def test_search_with_valid_category_passes_metadata_filter(self) -> None:
+        """Providing a valid category passes a metadata filter to Bedrock retrieve.
+
+        Validates: Requirements 9.1, 10.3
+        """
+        mock_bedrock = MagicMock()
+        mock_bedrock.retrieve.return_value = {
+            "retrievalResults": [
+                _make_retrieval_result(
+                    uri="s3://bucket/species/koala.md",
+                    text="Koalas eat eucalyptus.",
+                    score=0.92,
+                ),
+            ],
+        }
+
+        with (
+            patch(_PATCH_BEDROCK, return_value=mock_bedrock),
+            patch(_PATCH_KB_ID, "kb-test-id"),
+        ):
+            result = search_documents(query="koala", category="species")
+
+        # Verify the retrieve call included the metadata filter
+        mock_bedrock.retrieve.assert_called_once()
+        call_kwargs = mock_bedrock.retrieve.call_args[1]
+        vector_config = call_kwargs["retrievalConfiguration"]["vectorSearchConfiguration"]
+        assert "filter" in vector_config
+        assert vector_config["filter"] == {
+            "equals": {
+                "key": "category",
+                "value": "species",
+            }
+        }
+
+        # Verify results are still returned correctly
+        assert result["count"] == 1
+        assert result["results"][0]["category"] == "species"
+
+    def test_search_without_category_no_filter(self) -> None:
+        """Omitting category performs unfiltered search (no filter key).
+
+        Validates: Requirements 9.2, 10.4
+        """
+        mock_bedrock = MagicMock()
+        mock_bedrock.retrieve.return_value = {
+            "retrievalResults": [
+                _make_retrieval_result(
+                    uri="s3://bucket/species/koala.md",
+                    text="Koalas eat eucalyptus.",
+                    score=0.92,
+                ),
+            ],
+        }
+
+        with (
+            patch(_PATCH_BEDROCK, return_value=mock_bedrock),
+            patch(_PATCH_KB_ID, "kb-test-id"),
+        ):
+            result = search_documents(query="koala")
+
+        # Verify the retrieve call did NOT include a filter key
+        mock_bedrock.retrieve.assert_called_once()
+        call_kwargs = mock_bedrock.retrieve.call_args[1]
+        vector_config = call_kwargs["retrievalConfiguration"]["vectorSearchConfiguration"]
+        assert "filter" not in vector_config
+
+        # Verify results are still returned
+        assert result["count"] == 1
+
+    def test_search_invalid_category_returns_validation_error(self) -> None:
+        """Providing an invalid category returns a validation error without calling Bedrock.
+
+        Validates: Requirements 9.3, 10.3
+        """
+        mock_bedrock = MagicMock()
+
+        with (
+            patch(_PATCH_BEDROCK, return_value=mock_bedrock),
+            patch(_PATCH_KB_ID, "kb-test-id"),
+        ):
+            result = search_documents(query="koala", category="invalid")
+
+        assert result["error"] == "validation_error"
+        assert "invalid" in result["message"]
+        assert "species" in result["message"]
+        assert "management_plans" in result["message"]
+        assert "emergency" in result["message"]
+
+        # Bedrock should NOT have been called
+        mock_bedrock.retrieve.assert_not_called()

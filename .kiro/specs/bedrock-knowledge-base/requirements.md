@@ -4,6 +4,8 @@
 
 Replace the current string-matching document search in the conservation_docs MCP server with semantic search powered by Amazon Bedrock Knowledge Base backed by an S3 vector store. The existing S3 docs bucket already contains conservation documents (species info, management plans, emergency procedures). CDK infrastructure will provision the Knowledge Base and S3 vector store, and the MCP server will be updated to query the Knowledge Base instead of performing naive substring matching.
 
+Additionally, each sample document is accompanied by a `.metadata.json` sidecar file containing structured metadata attributes (category, region). The Bedrock Data Source is configured with metadata field mappings so the Knowledge Base can use these attributes for filtered retrieval. The `search_documents` tool accepts an optional `category` filter parameter that is passed to the Bedrock `retrieve` API as a metadata filter, enabling targeted searches within a specific document category.
+
 ## Glossary
 
 - **Knowledge_Base**: An Amazon Bedrock Knowledge Base resource that ingests documents from a data source, chunks them, generates vector embeddings, and stores them in a vector store for semantic retrieval.
@@ -15,6 +17,8 @@ Replace the current string-matching document search in the conservation_docs MCP
 - **Semantic_Search**: A search method that uses vector embeddings to find documents by meaning rather than exact keyword matching.
 - **Chunking_Strategy**: The method used by the Knowledge_Base to split documents into smaller segments before embedding. Bedrock supports fixed-size, default, and semantic chunking.
 - **Retrieval_Response**: The structured result returned by the Bedrock `retrieve` API, containing matched text passages, source metadata, and relevance scores.
+- **Metadata_Sidecar**: A `.metadata.json` file placed alongside each sample document in S3 (e.g. `species/koala.md.metadata.json`). It contains structured `metadataAttributes` used by the Knowledge_Base for filtered retrieval.
+- **Metadata_Filter**: A filter condition passed to the Bedrock `retrieve` API that restricts results to documents matching specific metadata attribute values (e.g. category equals "species").
 
 ## Requirements
 
@@ -82,3 +86,45 @@ Replace the current string-matching document search in the conservation_docs MCP
 2. THE test suite SHALL include a unit test that verifies the `search_documents` tool returns a structured error when the Bedrock `retrieve` API call raises a `ClientError`.
 3. THE test suite SHALL include a unit test that verifies the `search_documents` tool falls back to substring matching when the `KNOWLEDGE_BASE_ID` environment variable is not set.
 4. THE test suite SHALL include unit tests that verify the existing `list_documents` and `get_document` tools continue to function with mocked S3.
+
+### Requirement 7: Document Metadata Sidecar Files
+
+**User Story:** As a platform engineer, I want each sample document to have a `.metadata.json` sidecar file with structured attributes, so that the Bedrock Knowledge Base can use metadata filtering for targeted searches.
+
+#### Acceptance Criteria
+
+1. THE Docs_Bucket SHALL contain a Metadata_Sidecar file for each sample document, placed alongside the document with a `.metadata.json` suffix (e.g. `species/koala.md.metadata.json`).
+2. THE Metadata_Sidecar file SHALL contain a `metadataAttributes` object with a `category` attribute of type `STRING` whose value matches the document's folder name (species, emergency, or management_plans).
+3. WHERE a document relates to a specific geographic area, THE Metadata_Sidecar file SHALL contain a `region` attribute of type `STRING` with the relevant Australian region name.
+4. THE Metadata_Sidecar file SHALL conform to the Bedrock metadata file format with each attribute containing `value` and `type` fields.
+
+### Requirement 8: Configure Data Source Metadata Field Mappings
+
+**User Story:** As a platform engineer, I want the CDK Data Source configuration to include metadata field mappings, so that the Knowledge Base indexes the sidecar metadata attributes for filtered retrieval.
+
+#### Acceptance Criteria
+
+1. WHEN the CDK_Stack is synthesised, THE Data_Source SHALL include a metadata field mapping for the `category` attribute in its `ParsingConfiguration` or `ServerSideEncryptionConfiguration` metadata fields configuration.
+2. WHEN the CDK_Stack is synthesised, THE Data_Source SHALL include a metadata field mapping for the `region` attribute.
+
+### Requirement 9: Filtered Search by Category
+
+**User Story:** As a conservation ranger, I want to filter semantic search results by document category, so that I can narrow results to species info, emergency procedures, or management plans.
+
+#### Acceptance Criteria
+
+1. WHEN the search_documents tool is called with an optional `category` parameter, THE MCP_Server SHALL pass a Metadata_Filter to the Bedrock `retrieve` API that restricts results to documents whose `category` metadata attribute equals the provided value.
+2. WHEN the search_documents tool is called without a `category` parameter, THE MCP_Server SHALL perform an unfiltered semantic search across all documents.
+3. WHEN the search_documents tool is called with a `category` parameter that is not one of the valid categories, THE MCP_Server SHALL return a structured validation error.
+
+### Requirement 10: Test Coverage for Metadata Filtering
+
+**User Story:** As a developer, I want tests that verify metadata sidecar files are valid and that filtered search passes the correct filter to Bedrock, so that metadata filtering works correctly.
+
+#### Acceptance Criteria
+
+1. THE test suite SHALL include a test that verifies each sample document in `config/sample_documents/` has a corresponding `.metadata.json` sidecar file.
+2. THE test suite SHALL include a test that verifies each Metadata_Sidecar file contains a valid `metadataAttributes` object with a `category` attribute matching the document's folder name.
+3. THE test suite SHALL include a unit test that verifies the `search_documents` tool passes a metadata filter to the Bedrock `retrieve` API when a `category` parameter is provided.
+4. THE test suite SHALL include a unit test that verifies the `search_documents` tool performs an unfiltered search when no `category` parameter is provided.
+5. THE test suite SHALL include a property test that verifies for any valid category, the metadata filter passed to Bedrock has the correct structure and value.

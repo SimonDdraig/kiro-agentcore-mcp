@@ -1,0 +1,12 @@
+{
+  "metadataAttributes": {
+    "category": {
+      "value": "species",
+      "type": "STRING"
+    },
+    "region": {
+      "value": "Northern Australia / Great Barrier Reef",
+      "type": "STRING"
+    }
+  }
+}

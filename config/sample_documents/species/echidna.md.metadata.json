@@ -1,0 +1,12 @@
+{
+  "metadataAttributes": {
+    "category": {
+      "value": "species",
+      "type": "STRING"
+    },
+    "region": {
+      "value": "Australia-wide",
+      "type": "STRING"
+    }
+  }
+}

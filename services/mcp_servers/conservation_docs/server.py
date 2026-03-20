@@ -219,7 +219,7 @@ def get_document(document_key: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def search_documents(query: str, max_results: int = 5) -> dict[str, Any]:
+def search_documents(query: str, max_results: int = 5, category: str | None = None) -> dict[str, Any]:
     """Search conservation documents by semantic query.
 
     When a Knowledge Base is configured, performs semantic search via the
@@ -230,10 +230,19 @@ def search_documents(query: str, max_results: int = 5) -> dict[str, Any]:
         query: The search query string.
         max_results: Maximum number of results to return (default 5,
             clamped to [1, 20]).
+        category: Optional document category filter — one of 'species',
+            'management_plans', or 'emergency'. When provided, restricts
+            results to documents in that category.
 
     Returns:
         A dict with 'results' and 'count', or a structured error dict.
     """
+    if category is not None and category not in CATEGORIES:
+        return {
+            "error": "validation_error",
+            "message": f"Invalid category '{category}'. Must be one of: {', '.join(CATEGORIES)}",
+        }
+
     clamped_max_results = max(1, min(max_results, 20))
 
     if not _KNOWLEDGE_BASE_ID:
@@ -242,13 +251,21 @@ def search_documents(query: str, max_results: int = 5) -> dict[str, Any]:
 
     try:
         client = _get_bedrock_agent_runtime_client()
+        vector_search_config: dict[str, Any] = {
+            "numberOfResults": clamped_max_results,
+        }
+        if category is not None:
+            vector_search_config["filter"] = {
+                "equals": {
+                    "key": "category",
+                    "value": category,
+                }
+            }
         response = client.retrieve(
             knowledgeBaseId=_KNOWLEDGE_BASE_ID,
             retrievalQuery={"text": query},
             retrievalConfiguration={
-                "vectorSearchConfiguration": {
-                    "numberOfResults": clamped_max_results,
-                }
+                "vectorSearchConfiguration": vector_search_config,
             },
         )
     except ClientError as exc:
@@ -265,7 +282,7 @@ def search_documents(query: str, max_results: int = 5) -> dict[str, Any]:
     for item in retrieval_results:
         uri = item.get("location", {}).get("s3Location", {}).get("uri", "")
         try:
-            key, category = _parse_s3_uri(uri)
+            key, result_category = _parse_s3_uri(uri)
         except Exception:
             logger.warning("Skipping result with unparseable S3 URI: %s", uri)
             continue
@@ -274,7 +291,7 @@ def search_documents(query: str, max_results: int = 5) -> dict[str, Any]:
             {
                 "source_uri": uri,
                 "document_key": key,
-                "category": category,
+                "category": result_category,
                 "text": item.get("content", {}).get("text", ""),
                 "score": item.get("score", 0.0),
             }
