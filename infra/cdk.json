@@ -1,5 +1,5 @@
 {
-  "app": "python3 app.py",
+  "app": "../bush-ranger-venv/bin/python app.py",
   "watch": {
     "include": ["**", "../models/**", "../services/**"],
     "exclude": ["**/__pycache__", "*.pyc", "../tests/**"]

@@ -73,14 +73,6 @@ class TestProperty10StackSynthesisesValidTemplate:
         """Template contains AgentCore Runtime resources (agent + 3 MCP servers)."""
         template.resource_count_is("AWS::BedrockAgentCore::Runtime", 4)
 
-    def test_agentcore_gateway_exists(self, template: Template) -> None:
-        """Template contains an AgentCore Gateway resource."""
-        template.resource_count_is("AWS::BedrockAgentCore::Gateway", 1)
-
-    def test_agentcore_gateway_targets_exist(self, template: Template) -> None:
-        """Template contains 3 GatewayTarget resources (wildlife, docs, weather)."""
-        template.resource_count_is("AWS::BedrockAgentCore::GatewayTarget", 3)
-
     def test_iam_roles_exist(self, template: Template) -> None:
         """Template contains IAM roles (at least 4: wildlife, docs, weather, agent)."""
         resources = template.find_resources("AWS::IAM::Role")
@@ -230,27 +222,24 @@ class TestProperty12IAMLeastPrivilege:
         )
 
     def test_all_roles_assumed_by_bedrock(self, template: Template) -> None:
-        """All custom IAM roles are assumed by bedrock.amazonaws.com."""
-        roles = template.find_resources(
-            "AWS::IAM::Role",
-            {
-                "Properties": {
-                    "AssumeRolePolicyDocument": {
-                        "Statement": Match.array_with(
-                            [
-                                Match.object_like(
-                                    {
-                                        "Principal": {"Service": "bedrock.amazonaws.com"},
-                                    }
-                                )
-                            ]
-                        ),
-                    },
-                },
-            },
-        )
+        """All custom IAM roles are assumed by bedrock.amazonaws.com (possibly via CompositePrincipal)."""
+        all_roles = template.find_resources("AWS::IAM::Role")
+        bedrock_roles = []
+        for logical_id, resource in all_roles.items():
+            assume_doc = resource.get("Properties", {}).get("AssumeRolePolicyDocument", {})
+            for stmt in assume_doc.get("Statement", []):
+                principal = stmt.get("Principal", {})
+                service = principal.get("Service", "")
+                # CompositePrincipal produces a list; single principal is a string
+                if isinstance(service, list):
+                    if "bedrock.amazonaws.com" in service:
+                        bedrock_roles.append(logical_id)
+                        break
+                elif service == "bedrock.amazonaws.com":
+                    bedrock_roles.append(logical_id)
+                    break
         # We expect at least 4 roles assumed by bedrock (wildlife, docs, weather, agent)
-        assert len(roles) >= 4, f"Expected at least 4 bedrock-assumed roles, found {len(roles)}"
+        assert len(bedrock_roles) >= 4, f"Expected at least 4 bedrock-assumed roles, found {len(bedrock_roles)}"
 
     def test_cloudwatch_logging_permissions_present(self, template: Template) -> None:
         """At least one IAM policy includes CloudWatch log stream/event permissions."""
@@ -469,9 +458,30 @@ class TestProperty1KnowledgeBaseResource:
             {
                 "StorageConfiguration": Match.object_like(
                     {
-                        "Type": "S3",
+                        "Type": "S3_VECTORS",
+                        "S3VectorsConfiguration": Match.object_like(
+                            {
+                                "IndexArn": Match.any_value(),
+                            }
+                        ),
                     }
                 ),
+            },
+        )
+
+    def test_s3_vector_bucket_exists(self, template: Template) -> None:
+        """Template contains an S3 Vectors VectorBucket resource."""
+        template.resource_count_is("AWS::S3Vectors::VectorBucket", 1)
+
+    def test_s3_vector_index_exists(self, template: Template) -> None:
+        """Template contains an S3 Vectors Index with correct config."""
+        template.has_resource_properties(
+            "AWS::S3Vectors::Index",
+            {
+                "IndexName": "bush-ranger-kb-index",
+                "DataType": "float32",
+                "Dimension": 1024,
+                "DistanceMetric": "cosine",
             },
         )
 
@@ -542,7 +552,9 @@ class TestProperty3IAMPermissions:
                         [
                             Match.object_like(
                                 {
-                                    "Action": "s3:GetObject",
+                                    "Action": Match.array_with(
+                                        ["s3:GetObject", "s3:ListBucket"]
+                                    ),
                                     "Effect": "Allow",
                                 }
                             )

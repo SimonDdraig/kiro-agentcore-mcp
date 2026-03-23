@@ -36,6 +36,9 @@ from aws_cdk import (
     aws_s3 as s3,
 )
 from aws_cdk import (
+    aws_s3_assets as s3_assets,
+)
+from aws_cdk import (
     aws_s3_deployment as s3deploy,
 )
 from aws_cdk import (
@@ -187,11 +190,9 @@ class BushRangerStack(Stack):
     # Bedrock Knowledge Base
     # ------------------------------------------------------------------
     def _create_knowledge_base(self) -> tuple[CfnResource, CfnResource]:
-        """Create a Bedrock Knowledge Base with S3 vector store and data source.
-
-        Returns a tuple of (knowledge_base, data_source) CfnResources.
-        """
+        """Create a Bedrock Knowledge Base with S3 Vectors store and data source."""
         embedding_model_arn = "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0"
+        vector_bucket_name = f"br-kb-{self.account}-{self.region}"
 
         # IAM role for the Knowledge Base
         self.kb_role = iam.Role(
@@ -202,8 +203,11 @@ class BushRangerStack(Stack):
         )
         self.kb_role.add_to_policy(
             iam.PolicyStatement(
-                actions=["s3:GetObject"],
-                resources=[f"{self.docs_bucket.bucket_arn}/*"],
+                actions=["s3:GetObject", "s3:ListBucket"],
+                resources=[
+                    self.docs_bucket.bucket_arn,
+                    f"{self.docs_bucket.bucket_arn}/*",
+                ],
             )
         )
         self.kb_role.add_to_policy(
@@ -212,8 +216,51 @@ class BushRangerStack(Stack):
                 resources=[embedding_model_arn],
             )
         )
+        self.kb_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "s3vectors:CreateIndex",
+                    "s3vectors:GetIndex",
+                    "s3vectors:DeleteIndex",
+                    "s3vectors:PutVectors",
+                    "s3vectors:GetVectors",
+                    "s3vectors:DeleteVectors",
+                    "s3vectors:QueryVectors",
+                    "s3vectors:ListVectors",
+                ],
+                resources=[
+                    f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/{vector_bucket_name}",
+                    f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/{vector_bucket_name}/*",
+                ],
+            )
+        )
 
-        # Knowledge Base (CfnResource — no L2 construct available)
+        # S3 Vector Bucket for KB embeddings
+        self.vector_bucket = CfnResource(
+            self,
+            "KBVectorBucket",
+            type="AWS::S3Vectors::VectorBucket",
+            properties={
+                "VectorBucketName": vector_bucket_name,
+            },
+        )
+
+        # S3 Vector Index (Titan v2 = 1024 dimensions)
+        self.vector_index = CfnResource(
+            self,
+            "KBVectorIndex",
+            type="AWS::S3Vectors::Index",
+            properties={
+                "VectorBucketName": vector_bucket_name,
+                "IndexName": "bush-ranger-kb-index",
+                "DataType": "float32",
+                "Dimension": 1024,
+                "DistanceMetric": "cosine",
+            },
+        )
+        self.vector_index.add_dependency(self.vector_bucket)
+
+        # Knowledge Base
         knowledge_base = CfnResource(
             self,
             "BedrockKnowledgeBase",
@@ -231,11 +278,18 @@ class BushRangerStack(Stack):
                 "StorageConfiguration": {
                     "Type": "S3_VECTORS",
                     "S3VectorsConfiguration": {
-                        "VectorBucketArn": self.docs_bucket.bucket_arn,
+                        "VectorBucketArn": self.vector_bucket.get_att("VectorBucketArn").to_string(),
+                        "IndexArn": self.vector_index.get_att("IndexArn").to_string(),
                     },
                 },
             },
         )
+        knowledge_base.add_dependency(self.vector_index)
+
+        # Ensure IAM policy is fully created before KB validates permissions
+        default_policy = self.kb_role.node.try_find_child("DefaultPolicy")
+        if default_policy:
+            knowledge_base.node.add_dependency(default_policy)
 
         # Data Source with fixed-size chunking
         data_source = CfnResource(
@@ -273,7 +327,7 @@ class BushRangerStack(Stack):
         indexes the sample documents automatically during ``cdk deploy``.
         """
         kb_id = self.knowledge_base.ref
-        ds_id = self.data_source.ref
+        ds_id = self.data_source.get_att("DataSourceId").to_string()
 
         return cr.AwsCustomResource(
             self,
@@ -481,7 +535,10 @@ class BushRangerStack(Stack):
         wildlife_role = iam.Role(
             self,
             "WildlifeSightingsRole",
-            assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
+            assumed_by=iam.CompositePrincipal(
+                iam.ServicePrincipal("bedrock.amazonaws.com"),
+                iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            ),
             description="Role for Wildlife Sightings MCP server",
         )
         wildlife_role.add_to_policy(
@@ -505,7 +562,10 @@ class BushRangerStack(Stack):
         docs_role = iam.Role(
             self,
             "ConservationDocsRole",
-            assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
+            assumed_by=iam.CompositePrincipal(
+                iam.ServicePrincipal("bedrock.amazonaws.com"),
+                iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            ),
             description="Role for Conservation Docs MCP server",
         )
         docs_role.add_to_policy(
@@ -535,7 +595,10 @@ class BushRangerStack(Stack):
         weather_role = iam.Role(
             self,
             "WeatherServerRole",
-            assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
+            assumed_by=iam.CompositePrincipal(
+                iam.ServicePrincipal("bedrock.amazonaws.com"),
+                iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            ),
             description="Role for Weather MCP server",
         )
         weather_role.add_to_policy(
@@ -550,7 +613,10 @@ class BushRangerStack(Stack):
         agent_role = iam.Role(
             self,
             "StrandsAgentRole",
-            assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
+            assumed_by=iam.CompositePrincipal(
+                iam.ServicePrincipal("bedrock.amazonaws.com"),
+                iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            ),
             description="Role for Strands Agent (Bush Ranger AI)",
         )
         agent_role.add_to_policy(
@@ -573,21 +639,51 @@ class BushRangerStack(Stack):
         return roles
 
     # ------------------------------------------------------------------
-    # 7.9  AgentCore Runtimes & Gateway
+    # 7.9  AgentCore Runtimes
     # ------------------------------------------------------------------
     def _create_agentcore_runtimes(
         self,
     ) -> tuple[CfnResource, dict[str, CfnResource]]:
-        """Create AgentCore runtimes for the agent and MCP servers, plus a Gateway.
+        """Create AgentCore runtimes for the agent and MCP servers.
 
         Architecture:
         - Each MCP server is an ``AWS::BedrockAgentCore::Runtime`` with
           ``ProtocolConfiguration: MCP`` and its code packaged as an S3 asset.
-        - The Strands agent is an ``AWS::BedrockAgentCore::Runtime``.
-        - An ``AWS::BedrockAgentCore::Gateway`` connects the agent to the
-          MCP server runtimes via ``GatewayTarget`` resources.
+        - The Strands agent is an ``AWS::BedrockAgentCore::Runtime`` that
+          connects to MCP servers via their runtime ARNs (env vars).
         """
         _network_public: dict[str, str] = {"NetworkMode": "PUBLIC"}
+
+        # Zip and upload each service directory as an S3 asset.
+        # CDK hashes the content — redeploy picks up code changes automatically.
+        _services = Path(__file__).resolve().parent.parent.parent / "services"
+
+        _exclude = ["__pycache__", "**/__pycache__", "*.pyc", "**/*.pyc"]
+
+        wildlife_asset = s3_assets.Asset(
+            self,
+            "WildlifeCodeAsset",
+            path=str(_services / "mcp_servers" / "wildlife_sightings"),
+            exclude=_exclude,
+        )
+        docs_asset = s3_assets.Asset(
+            self,
+            "DocsCodeAsset",
+            path=str(_services / "mcp_servers" / "conservation_docs"),
+            exclude=_exclude,
+        )
+        weather_asset = s3_assets.Asset(
+            self,
+            "WeatherCodeAsset",
+            path=str(_services / "mcp_servers" / "weather"),
+            exclude=_exclude,
+        )
+        agent_asset = s3_assets.Asset(
+            self,
+            "AgentCodeAsset",
+            path=str(_services / "agent"),
+            exclude=_exclude,
+        )
 
         mcp_servers: dict[str, CfnResource] = {}
 
@@ -604,8 +700,13 @@ class BushRangerStack(Stack):
                 "ProtocolConfiguration": "MCP",
                 "AgentRuntimeArtifact": {
                     "CodeConfiguration": {
-                        "Code": {"S3": {"Bucket": self.docs_bucket.bucket_name, "Prefix": "runtime/wildlife"}},
-                        "EntryPoint": ["python", "server.py"],
+                        "Code": {
+                            "S3": {
+                                "Bucket": wildlife_asset.s3_bucket_name,
+                                "Prefix": wildlife_asset.s3_object_key,
+                            }
+                        },
+                        "EntryPoint": ["server.py"],
                         "Runtime": "PYTHON_3_12",
                     },
                 },
@@ -628,8 +729,13 @@ class BushRangerStack(Stack):
                 },
                 "AgentRuntimeArtifact": {
                     "CodeConfiguration": {
-                        "Code": {"S3": {"Bucket": self.docs_bucket.bucket_name, "Prefix": "runtime/docs"}},
-                        "EntryPoint": ["python", "server.py"],
+                        "Code": {
+                            "S3": {
+                                "Bucket": docs_asset.s3_bucket_name,
+                                "Prefix": docs_asset.s3_object_key,
+                            }
+                        },
+                        "EntryPoint": ["server.py"],
                         "Runtime": "PYTHON_3_12",
                     },
                 },
@@ -649,15 +755,20 @@ class BushRangerStack(Stack):
                 "ProtocolConfiguration": "MCP",
                 "AgentRuntimeArtifact": {
                     "CodeConfiguration": {
-                        "Code": {"S3": {"Bucket": self.docs_bucket.bucket_name, "Prefix": "runtime/weather"}},
-                        "EntryPoint": ["python", "server.py"],
+                        "Code": {
+                            "S3": {
+                                "Bucket": weather_asset.s3_bucket_name,
+                                "Prefix": weather_asset.s3_object_key,
+                            }
+                        },
+                        "EntryPoint": ["server.py"],
                         "Runtime": "PYTHON_3_12",
                     },
                 },
             },
         )
 
-        # Strands Agent Runtime
+        # Strands Agent Runtime — connects to MCP servers via their ARNs
         agent_runtime = CfnResource(
             self,
             "BushRangerAgentRuntime",
@@ -667,48 +778,29 @@ class BushRangerStack(Stack):
                 "Description": "Bush Ranger AI - Australian Wildlife & Conservation Agent",
                 "RoleArn": self.iam_roles["agent"].role_arn,
                 "NetworkConfiguration": _network_public,
+                "EnvironmentVariables": {
+                    "WILDLIFE_SIGHTINGS_RUNTIME_ARN": mcp_servers["wildlife_sightings"]
+                    .get_att("AgentRuntimeArn")
+                    .to_string(),
+                    "CONSERVATION_DOCS_RUNTIME_ARN": mcp_servers["conservation_docs"]
+                    .get_att("AgentRuntimeArn")
+                    .to_string(),
+                    "WEATHER_RUNTIME_ARN": mcp_servers["weather"].get_att("AgentRuntimeArn").to_string(),
+                },
                 "AgentRuntimeArtifact": {
                     "CodeConfiguration": {
-                        "Code": {"S3": {"Bucket": self.docs_bucket.bucket_name, "Prefix": "runtime/agent"}},
-                        "EntryPoint": ["python", "agent.py"],
+                        "Code": {
+                            "S3": {
+                                "Bucket": agent_asset.s3_bucket_name,
+                                "Prefix": agent_asset.s3_object_key,
+                            }
+                        },
+                        "EntryPoint": ["handler.py"],
                         "Runtime": "PYTHON_3_12",
                     },
                 },
             },
         )
-
-        # Gateway — connects the agent to MCP server tools
-        self.gateway = CfnResource(
-            self,
-            "BushRangerGateway",
-            type="AWS::BedrockAgentCore::Gateway",
-            properties={
-                "Name": "bush-ranger-gateway",
-                "Description": "Gateway connecting Bush Ranger agent to MCP tool servers",
-                "AuthorizerType": "NONE",
-                "ProtocolType": "MCP",
-                "RoleArn": self.iam_roles["agent"].role_arn,
-            },
-        )
-
-        # Gateway Targets — one per MCP server
-        for name, server in mcp_servers.items():
-            CfnResource(
-                self,
-                f"GatewayTarget{name.title().replace('_', '')}",
-                type="AWS::BedrockAgentCore::GatewayTarget",
-                properties={
-                    "Name": f"bush-ranger-{name.replace('_', '-')}",
-                    "GatewayIdentifier": self.gateway.ref,
-                    "TargetConfiguration": {
-                        "Mcp": {
-                            "McpServer": {
-                                "Endpoint": server.get_att("AgentRuntimeArn").to_string(),
-                            },
-                        },
-                    },
-                },
-            )
 
         return agent_runtime, mcp_servers
 
@@ -723,14 +815,6 @@ class BushRangerStack(Stack):
             value=self.agent_runtime.get_att("AgentRuntimeArn").to_string(),
             description="AgentCore agent runtime ARN",
             export_name="BushRangerAgentEndpoint",
-        )
-
-        CfnOutput(
-            self,
-            "GatewayUrl",
-            value=self.gateway.get_att("GatewayUrl").to_string(),
-            description="AgentCore Gateway URL for MCP tool access",
-            export_name="BushRangerGatewayUrl",
         )
 
         CfnOutput(
@@ -800,7 +884,7 @@ class BushRangerStack(Stack):
         CfnOutput(
             self,
             "DataSourceId",
-            value=self.data_source.ref,
+            value=self.data_source.get_att("DataSourceId").to_string(),
             description="Bedrock Knowledge Base Data Source ID",
             export_name="BushRangerDataSourceId",
         )

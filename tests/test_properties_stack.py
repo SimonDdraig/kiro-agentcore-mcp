@@ -53,6 +53,14 @@ _ALLOWED_ACTIONS: dict[str, set[str]] = {
     "kb": {
         "s3:GetObject",
         "bedrock:InvokeModel",
+        "s3vectors:CreateIndex",
+        "s3vectors:GetIndex",
+        "s3vectors:DeleteIndex",
+        "s3vectors:PutVectors",
+        "s3vectors:GetVectors",
+        "s3vectors:DeleteVectors",
+        "s3vectors:QueryVectors",
+        "s3vectors:ListVectors",
     },
     "kb_ingestion": {
         "bedrock:StartIngestionJob",
@@ -98,7 +106,11 @@ def custom_role_logical_ids(template_json: dict[str, Any]) -> set[str]:
         for stmt in assume_doc.get("Statement", []):
             principal = stmt.get("Principal", {})
             service = principal.get("Service", "")
-            if service == "bedrock.amazonaws.com":
+            # CompositePrincipal produces a list; single principal is a string
+            if isinstance(service, list):
+                if "bedrock.amazonaws.com" in service:
+                    role_ids.add(logical_id)
+            elif service == "bedrock.amazonaws.com":
                 role_ids.add(logical_id)
     return role_ids
 
