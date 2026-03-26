@@ -32,6 +32,8 @@ _EXCLUDED_DIRS = {
     ".pytest_cache",
     ".vscode",
     "cdk.out",
+    "SampleAgent",
+    ".venv",
 }
 
 

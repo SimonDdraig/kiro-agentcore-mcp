@@ -26,11 +26,7 @@ export function SignIn(): React.JSX.Element {
       await signIn(email, password);
     } catch (err) {
       if (err instanceof Error) {
-        setError(
-          err.message === 'Incorrect username or password.'
-            ? 'Invalid username or password'
-            : 'An error occurred during sign in. Please try again.',
-        );
+        setError(err.message);
       } else {
         setError('An error occurred during sign in. Please try again.');
       }

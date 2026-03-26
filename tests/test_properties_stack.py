@@ -31,24 +31,58 @@ _ALLOWED_ACTIONS: dict[str, set[str]] = {
         "dynamodb:PutItem",
         "dynamodb:Query",
         "dynamodb:Scan",
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "logs:CreateLogGroup",
         "logs:CreateLogStream",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
         "logs:PutLogEvents",
     },
     "docs": {
         "s3:GetObject",
         "s3:ListBucket",
         "bedrock:Retrieve",
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "logs:CreateLogGroup",
         "logs:CreateLogStream",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
         "logs:PutLogEvents",
     },
     "weather": {
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "logs:CreateLogGroup",
         "logs:CreateLogStream",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
         "logs:PutLogEvents",
     },
     "agent": {
         "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock-agentcore:InvokeAgentRuntime",
+        "bedrock-agentcore:GetWorkloadAccessToken",
+        "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+        "bedrock-agentcore:GetWorkloadAccessTokenForUserId",
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "logs:CreateLogGroup",
         "logs:CreateLogStream",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
         "logs:PutLogEvents",
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets",
+        "cloudwatch:PutMetricData",
     },
     "kb": {
         "s3:GetObject",
@@ -210,6 +244,20 @@ class TestProperty12IAMLeastPrivilege:
         for resource in resources:
             # Resource can be a dict (Fn::Join, Fn::GetAtt, etc.) — those are scoped, not wildcards
             if isinstance(resource, str):
+                actions = stmt.get("Action", [])
+                if isinstance(actions, str):
+                    actions = [actions]
+                # These service-level actions legitimately require Resource: *
+                _wildcard_ok_actions = {
+                    "ecr:GetAuthorizationToken",
+                    "xray:PutTraceSegments",
+                    "xray:PutTelemetryRecords",
+                    "xray:GetSamplingRules",
+                    "xray:GetSamplingTargets",
+                    "cloudwatch:PutMetricData",
+                }
+                if resource == "*" and set(actions) <= _wildcard_ok_actions:
+                    continue
                 assert resource != "*", (
                     f"IAM policy statement contains wildcard Resource '*': {json.dumps(stmt, indent=2)}"
                 )

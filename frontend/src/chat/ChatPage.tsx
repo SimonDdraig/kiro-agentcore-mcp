@@ -50,10 +50,20 @@ export function ChatPage(): React.JSX.Element {
 
         const data = await response.json();
 
+        // The API returns { response: "...", sessionId: "..." }
+        // The response may be a JSON string like '{"result": "..."}' from the agent
+        let agentText = data.response ?? '';
+        try {
+          const parsed = JSON.parse(agentText);
+          if (parsed.result) agentText = parsed.result;
+        } catch {
+          // Not JSON — use as-is
+        }
+
         const agentMessage: ChatMessage = {
           id: crypto.randomUUID(),
           role: 'agent',
-          content: data.response,
+          content: agentText,
           timestamp: new Date(),
         };
 

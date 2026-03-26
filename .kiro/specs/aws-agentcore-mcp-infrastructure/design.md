@@ -260,8 +260,8 @@ No custom code needed. The agent's system prompt guides when to use it and which
 ### 5. Strands Agent (Bush Ranger AI)
 
 **Model Configuration:**
-- Primary: `anthropic.claude-sonnet-4-20250514` via Amazon Bedrock — used for complex reasoning, multi-tool orchestration
-- Secondary: `anthropic.claude-haiku-4-20250514` via Amazon Bedrock — used for simple classification, summarization, and formatting tasks
+- Primary: `global.anthropic.claude-sonnet-4-5-20250929-v1:0` via Amazon Bedrock — used for complex reasoning, multi-tool orchestration
+- Secondary: `global.anthropic.claude-haiku-4-5-20251001-v1:0` via Amazon Bedrock — used for simple classification, summarization, and formatting tasks
 - Temperature: 0.3 (factual, consistent responses)
 
 **Plugin Configuration:**

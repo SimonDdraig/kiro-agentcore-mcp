@@ -67,7 +67,17 @@ CDK will show a summary of IAM changes and ask for confirmation. The stack outpu
 - DynamoDB table name
 - S3 bucket names
 
-### 8. Create a ranger user
+### 8. Set up vended log delivery (first deploy only)
+
+AgentCore's vended log delivery (APPLICATION_LOGS, USAGE_LOGS) uses APIs with no CloudFormation support. Run this script after the first deploy to enable it for all runtimes:
+
+```bash
+AWS_DEFAULT_REGION=us-east-1 python scripts/setup_log_delivery.py
+```
+
+Idempotent — safe to re-run. Container stdout logs (-DEFAULT runtime-logs) are handled automatically by the CDK stack's IAM permissions.
+
+### 9. Create a ranger user
 
 Self-signup is disabled. Create users via the AWS Console or CLI:
 

@@ -59,8 +59,8 @@ class TestProperty10StackSynthesisesValidTemplate:
         template.resource_count_is("AWS::Cognito::UserPool", 1)
 
     def test_cognito_user_pool_client_exists(self, template: Template) -> None:
-        """Template contains a Cognito User Pool Client."""
-        template.resource_count_is("AWS::Cognito::UserPoolClient", 1)
+        """Template contains Cognito User Pool Clients (SPA + M2M)."""
+        template.resource_count_is("AWS::Cognito::UserPoolClient", 2)
 
     def test_api_gateway_exists(self, template: Template) -> None:
         """Template contains an HTTP API Gateway."""
@@ -79,8 +79,8 @@ class TestProperty10StackSynthesisesValidTemplate:
         assert len(resources) >= 4, f"Expected at least 4 IAM roles, found {len(resources)}"
 
     def test_cloudwatch_log_groups_exist(self, template: Template) -> None:
-        """Template contains 5 CloudWatch log groups (agent + 4 MCP servers)."""
-        template.resource_count_is("AWS::Logs::LogGroup", 5)
+        """Template contains 6 CloudWatch log groups (agent + 4 MCP servers + API Gateway)."""
+        template.resource_count_is("AWS::Logs::LogGroup", 6)
 
 
 # ------------------------------------------------------------------
@@ -205,7 +205,10 @@ class TestProperty12IAMLeastPrivilege:
                         [
                             Match.object_like(
                                 {
-                                    "Action": "bedrock:InvokeModel",
+                                    "Action": [
+                                        "bedrock:InvokeModel",
+                                        "bedrock:InvokeModelWithResponseStream",
+                                    ],
                                     "Effect": "Allow",
                                     "Resource": Match.array_with(
                                         [
@@ -552,9 +555,7 @@ class TestProperty3IAMPermissions:
                         [
                             Match.object_like(
                                 {
-                                    "Action": Match.array_with(
-                                        ["s3:GetObject", "s3:ListBucket"]
-                                    ),
+                                    "Action": Match.array_with(["s3:GetObject", "s3:ListBucket"]),
                                     "Effect": "Allow",
                                 }
                             )

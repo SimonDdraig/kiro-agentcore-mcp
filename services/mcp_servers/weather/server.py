@@ -3,16 +3,29 @@
 
 from __future__ import annotations
 
+import logging
 import math
+import sys
 from typing import Any
 
 import requests
 from mcp.server.fastmcp import FastMCP
 
 # ---------------------------------------------------------------------------
-# MCP server instance
+# AgentCore Runtime app + MCP server instance
 # ---------------------------------------------------------------------------
-mcp = FastMCP("weather-climate")
+mcp = FastMCP("weather-climate", host="0.0.0.0", stateless_http=True)
+
+# Configure logging to write to both stdout and stderr so AgentCore captures it
+_handler = logging.StreamHandler(sys.stderr)
+_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+_root = logging.getLogger()
+_root.handlers.clear()
+_root.setLevel(logging.INFO)
+_root.addHandler(_handler)
+
+logger = logging.getLogger(__name__)
+logger.info("Weather server starting")
 
 # ---------------------------------------------------------------------------
 # Open-Meteo API configuration
@@ -144,6 +157,7 @@ def get_current_weather(lat: float, lng: float) -> dict[str, Any]:
         "longitude": lng,
         "current": "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code",
     }
+    logger.info("get_current_weather called — lat=%s, lng=%s", lat, lng)
 
     try:
         data = _call_open_meteo("/forecast", params)
@@ -290,4 +304,4 @@ def assess_fire_danger(lat: float, lng: float) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="streamable-http")

@@ -27,16 +27,19 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
 )
 from aws_cdk import (
+    aws_ecr_assets as ecr_assets,
+)
+from aws_cdk import (
     aws_iam as iam,
+)
+from aws_cdk import (
+    aws_lambda as _lambda,
 )
 from aws_cdk import (
     aws_logs as logs,
 )
 from aws_cdk import (
     aws_s3 as s3,
-)
-from aws_cdk import (
-    aws_s3_assets as s3_assets,
 )
 from aws_cdk import (
     aws_s3_deployment as s3deploy,
@@ -92,6 +95,17 @@ class BushRangerStack(Stack):
         # ----------------------------------------------------------------
         self.distribution = self._create_cloudfront_distribution()
 
+        # Deploy frontend build output to the S3 bucket
+        frontend_dist = str(Path(__file__).resolve().parent.parent.parent / "frontend" / "dist")
+        s3deploy.BucketDeployment(
+            self,
+            "DeployFrontend",
+            sources=[s3deploy.Source.asset(frontend_dist)],
+            destination_bucket=self.frontend_bucket,
+            distribution=self.distribution,
+            distribution_paths=["/*"],
+        )
+
         # ----------------------------------------------------------------
         # 7.6  Cognito User Pool
         # ----------------------------------------------------------------
@@ -101,6 +115,11 @@ class BushRangerStack(Stack):
         # 7.7  Cognito User Pool Client
         # ----------------------------------------------------------------
         self.user_pool_client = self._create_cognito_user_pool_client()
+
+        # ----------------------------------------------------------------
+        # Cognito M2M (agent-to-MCP auth via client_credentials grant)
+        # ----------------------------------------------------------------
+        self.m2m_domain, self.m2m_resource_server, self.m2m_client = self._create_cognito_m2m_resources()
 
         # ----------------------------------------------------------------
         # 7.8  HTTP API Gateway
@@ -121,6 +140,11 @@ class BushRangerStack(Stack):
         # 7.9  AgentCore Runtimes
         # ----------------------------------------------------------------
         self.agent_runtime, self.mcp_server_runtimes = self._create_agentcore_runtimes()
+
+        # ----------------------------------------------------------------
+        # 7.13 API Lambda (proxies to AgentCore Runtime)
+        # ----------------------------------------------------------------
+        self._create_api_lambda()
 
         # ----------------------------------------------------------------
         # 7.12 Stack Outputs
@@ -448,6 +472,52 @@ class BushRangerStack(Stack):
     # ------------------------------------------------------------------
     # 7.8  HTTP API Gateway
     # ------------------------------------------------------------------
+    def _create_cognito_m2m_resources(
+        self,
+    ) -> tuple[cognito.UserPoolDomain, cognito.UserPoolResourceServer, cognito.UserPoolClient]:
+        """Create Cognito domain, resource server, and M2M client for agent-to-MCP auth.
+
+        The client_credentials grant requires a domain (token endpoint),
+        a resource server (custom scopes), and an app client with a secret.
+        """
+        # Cognito domain — required for the OAuth2 token endpoint
+        domain = self.user_pool.add_domain(
+            "BushRangerDomain",
+            cognito_domain=cognito.CognitoDomainOptions(
+                domain_prefix=f"bush-ranger-{self.account}",
+            ),
+        )
+
+        # Resource server with a custom scope for MCP access
+        mcp_scope = cognito.ResourceServerScope(
+            scope_name="invoke",
+            scope_description="Invoke MCP servers",
+        )
+        resource_server = self.user_pool.add_resource_server(
+            "BushRangerMcpResourceServer",
+            identifier="mcp",
+            scopes=[mcp_scope],
+        )
+
+        # M2M app client with secret — uses client_credentials grant
+        m2m_client = self.user_pool.add_client(
+            "BushRangerM2MClient",
+            user_pool_client_name="BushRangerM2MClient",
+            generate_secret=True,
+            o_auth=cognito.OAuthSettings(
+                flows=cognito.OAuthFlows(client_credentials=True),
+                scopes=[
+                    cognito.OAuthScope.resource_server(resource_server, mcp_scope),
+                ],
+            ),
+            access_token_validity=Duration.hours(1),
+        )
+
+        return domain, resource_server, m2m_client
+
+    # ------------------------------------------------------------------
+    # 7.8  HTTP API Gateway
+    # ------------------------------------------------------------------
     def _create_http_api(self) -> apigwv2.CfnApi:
         """Create HTTP API Gateway with JWT authorizer and CORS."""
         # HTTP API
@@ -478,8 +548,8 @@ class BushRangerStack(Stack):
             ),
         )
 
-        # POST /invoke route
-        apigwv2.CfnRoute(
+        # POST /invoke route (target set later by _create_api_lambda)
+        self.invoke_route = apigwv2.CfnRoute(
             self,
             "InvokeRoute",
             api_id=api.ref,
@@ -488,13 +558,42 @@ class BushRangerStack(Stack):
             authorizer_id=authorizer.ref,
         )
 
-        # Stage (auto-deploy)
+        # Access log group for API requests
+        api_log_group = logs.LogGroup(
+            self,
+            "ApiAccessLogGroup",
+            log_group_name="/bush-ranger/api-gateway",
+            retention=logs.RetentionDays.ONE_MONTH,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        # Stage (auto-deploy) with access logging and metrics
         apigwv2.CfnStage(
             self,
             "DefaultStage",
             api_id=api.ref,
             stage_name="$default",
             auto_deploy=True,
+            access_log_settings=apigwv2.CfnStage.AccessLogSettingsProperty(
+                destination_arn=api_log_group.log_group_arn,
+                format=(
+                    '{"requestId":"$context.requestId",'
+                    '"ip":"$context.identity.sourceIp",'
+                    '"requestTime":"$context.requestTime",'
+                    '"httpMethod":"$context.httpMethod",'
+                    '"routeKey":"$context.routeKey",'
+                    '"status":"$context.status",'
+                    '"protocol":"$context.protocol",'
+                    '"responseLength":"$context.responseLength",'
+                    '"integrationError":"$context.integrationErrorMessage",'
+                    '"errorMessage":"$context.error.message"}'
+                ),
+            ),
+            default_route_settings=apigwv2.CfnStage.RouteSettingsProperty(
+                detailed_metrics_enabled=True,
+                throttling_burst_limit=50,
+                throttling_rate_limit=100,
+            ),
         )
 
         return api
@@ -609,6 +708,51 @@ class BushRangerStack(Stack):
         )
         roles["weather"] = weather_role
 
+        # ECR pull permissions — AgentCore needs these on each MCP server
+        # execution role to pull the container image during runtime creation.
+        _ecr_repo_arn = (
+            f"arn:aws:ecr:{self.region}:{self.account}:repository/"
+            f"cdk-hnb659fds-container-assets-{self.account}-{self.region}"
+        )
+        for role_key in ("wildlife_sightings", "conservation_docs", "weather"):
+            roles[role_key].add_to_policy(
+                iam.PolicyStatement(
+                    actions=["ecr:GetAuthorizationToken"],
+                    resources=["*"],
+                )
+            )
+            roles[role_key].add_to_policy(
+                iam.PolicyStatement(
+                    actions=["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"],
+                    resources=[_ecr_repo_arn],
+                )
+            )
+            # AgentCore runtime logging — enables container stdout in CloudWatch
+            roles[role_key].add_to_policy(
+                iam.PolicyStatement(
+                    actions=["logs:DescribeLogStreams", "logs:CreateLogGroup"],
+                    resources=[
+                        f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*",
+                    ],
+                )
+            )
+            roles[role_key].add_to_policy(
+                iam.PolicyStatement(
+                    actions=["logs:DescribeLogGroups"],
+                    resources=[
+                        f"arn:aws:logs:{self.region}:{self.account}:log-group:*",
+                    ],
+                )
+            )
+            roles[role_key].add_to_policy(
+                iam.PolicyStatement(
+                    actions=["logs:CreateLogStream", "logs:PutLogEvents"],
+                    resources=[
+                        f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*",
+                    ],
+                )
+            )
+
         # Strands Agent role
         agent_role = iam.Role(
             self,
@@ -621,17 +765,91 @@ class BushRangerStack(Stack):
         )
         agent_role.add_to_policy(
             iam.PolicyStatement(
-                actions=["bedrock:InvokeModel"],
+                actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
                 resources=[
-                    f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-sonnet-4-20250514",
-                    f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-haiku-4-20250514",
+                    # Foundation model ARNs
+                    "arn:aws:bedrock:*::foundation-model/*anthropic.claude-sonnet-4-5-20250929-v1:0",
+                    "arn:aws:bedrock:*::foundation-model/*anthropic.claude-haiku-4-5-20251001-v1:0",
+                    # Inference profile ARNs (Bedrock resolves models to these)
+                    f"arn:aws:bedrock:*:{self.account}:inference-profile/*",
+                ],
+            )
+        )
+        # AgentCore runtime logging — required by the runtime infrastructure
+        agent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["logs:DescribeLogStreams", "logs:CreateLogGroup"],
+                resources=[
+                    f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*",
+                ],
+            )
+        )
+        agent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["logs:DescribeLogGroups"],
+                resources=[
+                    f"arn:aws:logs:{self.region}:{self.account}:log-group:*",
                 ],
             )
         )
         agent_role.add_to_policy(
             iam.PolicyStatement(
                 actions=["logs:CreateLogStream", "logs:PutLogEvents"],
-                resources=[self.log_groups["agent"].log_group_arn],
+                resources=[
+                    f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*",
+                ],
+            )
+        )
+        # X-Ray tracing — required by AgentCore observability
+        agent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "xray:PutTraceSegments",
+                    "xray:PutTelemetryRecords",
+                    "xray:GetSamplingRules",
+                    "xray:GetSamplingTargets",
+                ],
+                resources=["*"],
+            )
+        )
+        # CloudWatch metrics — required by AgentCore runtime
+        agent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["cloudwatch:PutMetricData"],
+                resources=["*"],
+                conditions={
+                    "StringEquals": {"cloudwatch:namespace": "bedrock-agentcore"},
+                },
+            )
+        )
+        # Workload identity tokens — needed for agent-to-MCP auth via OAuth
+        agent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock-agentcore:GetWorkloadAccessToken",
+                    "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+                    "bedrock-agentcore:GetWorkloadAccessTokenForUserId",
+                ],
+                resources=[
+                    f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/*",
+                    f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:workload-identity-directory/default",
+                    f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:workload-identity-directory/default/*",
+                ],
+            )
+        )
+        # InvokeAgentRuntime on MCP server runtimes — added after runtimes are created
+        # (see _create_agentcore_runtimes)
+        # ECR pull permissions for containerised agent
+        agent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ecr:GetAuthorizationToken"],
+                resources=["*"],
+            )
+        )
+        agent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"],
+                resources=[_ecr_repo_arn],
             )
         )
         roles["agent"] = agent_role
@@ -647,47 +865,68 @@ class BushRangerStack(Stack):
         """Create AgentCore runtimes for the agent and MCP servers.
 
         Architecture:
-        - Each MCP server is an ``AWS::BedrockAgentCore::Runtime`` with
-          ``ProtocolConfiguration: MCP`` and its code packaged as an S3 asset.
-        - The Strands agent is an ``AWS::BedrockAgentCore::Runtime`` that
-          connects to MCP servers via their runtime ARNs (env vars).
+        - Each MCP server is containerised, pushed to ECR via
+          ``DockerImageAsset``, and deployed as an
+          ``AWS::BedrockAgentCore::Runtime`` with ``ContainerConfiguration``
+          and ``ProtocolConfiguration: MCP``.
+        - Inbound auth on MCP servers uses ``CustomJWTAuthorizer`` wired
+          to the Cognito User Pool. The agent authenticates using a
+          Cognito access token obtained via client_credentials grant.
+        - The Strands agent is an ``AWS::BedrockAgentCore::Runtime`` using
+          ``ContainerConfiguration`` that connects to MCP servers via
+          their runtime ARNs (env vars).
         """
         _network_public: dict[str, str] = {"NetworkMode": "PUBLIC"}
-
-        # Zip and upload each service directory as an S3 asset.
-        # CDK hashes the content — redeploy picks up code changes automatically.
         _services = Path(__file__).resolve().parent.parent.parent / "services"
-
         _exclude = ["__pycache__", "**/__pycache__", "*.pyc", "**/*.pyc"]
 
-        wildlife_asset = s3_assets.Asset(
-            self,
-            "WildlifeCodeAsset",
-            path=str(_services / "mcp_servers" / "wildlife_sightings"),
-            exclude=_exclude,
+        # -- Cognito JWT authorizer config for MCP server inbound auth --
+        _cognito_discovery_url = (
+            f"https://cognito-idp.{self.region}.amazonaws.com"
+            f"/{self.user_pool.user_pool_id}/.well-known/openid-configuration"
         )
-        docs_asset = s3_assets.Asset(
+        _mcp_authorizer: dict[str, Any] = {
+            "CustomJWTAuthorizer": {
+                "DiscoveryUrl": _cognito_discovery_url,
+                "AllowedClients": [self.m2m_client.user_pool_client_id],
+            },
+        }
+
+        # -- Build Docker images for each MCP server and push to ECR --
+        wildlife_image = ecr_assets.DockerImageAsset(
             self,
-            "DocsCodeAsset",
-            path=str(_services / "mcp_servers" / "conservation_docs"),
+            "WildlifeImage",
+            directory=str(_services / "mcp_servers" / "wildlife_sightings"),
             exclude=_exclude,
+            platform=ecr_assets.Platform.LINUX_ARM64,
         )
-        weather_asset = s3_assets.Asset(
+        docs_image = ecr_assets.DockerImageAsset(
             self,
-            "WeatherCodeAsset",
-            path=str(_services / "mcp_servers" / "weather"),
+            "DocsImage",
+            directory=str(_services / "mcp_servers" / "conservation_docs"),
             exclude=_exclude,
+            platform=ecr_assets.Platform.LINUX_ARM64,
         )
-        agent_asset = s3_assets.Asset(
+        weather_image = ecr_assets.DockerImageAsset(
             self,
-            "AgentCodeAsset",
-            path=str(_services / "agent"),
+            "WeatherImage",
+            directory=str(_services / "mcp_servers" / "weather"),
             exclude=_exclude,
+            platform=ecr_assets.Platform.LINUX_ARM64,
+        )
+
+        # -- Agent code as Docker image (containerised for fast cold start) --
+        agent_image = ecr_assets.DockerImageAsset(
+            self,
+            "AgentImage",
+            directory=str(_services / "agent"),
+            exclude=_exclude,
+            platform=ecr_assets.Platform.LINUX_ARM64,
         )
 
         mcp_servers: dict[str, CfnResource] = {}
 
-        # Wildlife Sightings MCP Server Runtime
+        # Wildlife Sightings MCP Server Runtime (container)
         mcp_servers["wildlife_sightings"] = CfnResource(
             self,
             "WildlifeSightingsMcpRuntime",
@@ -698,22 +937,16 @@ class BushRangerStack(Stack):
                 "RoleArn": self.iam_roles["wildlife_sightings"].role_arn,
                 "NetworkConfiguration": _network_public,
                 "ProtocolConfiguration": "MCP",
+                "AuthorizerConfiguration": _mcp_authorizer,
                 "AgentRuntimeArtifact": {
-                    "CodeConfiguration": {
-                        "Code": {
-                            "S3": {
-                                "Bucket": wildlife_asset.s3_bucket_name,
-                                "Prefix": wildlife_asset.s3_object_key,
-                            }
-                        },
-                        "EntryPoint": ["server.py"],
-                        "Runtime": "PYTHON_3_12",
+                    "ContainerConfiguration": {
+                        "ContainerUri": wildlife_image.image_uri,
                     },
                 },
             },
         )
 
-        # Conservation Docs MCP Server Runtime
+        # Conservation Docs MCP Server Runtime (container)
         mcp_servers["conservation_docs"] = CfnResource(
             self,
             "ConservationDocsMcpRuntime",
@@ -724,25 +957,20 @@ class BushRangerStack(Stack):
                 "RoleArn": self.iam_roles["conservation_docs"].role_arn,
                 "NetworkConfiguration": _network_public,
                 "ProtocolConfiguration": "MCP",
+                "AuthorizerConfiguration": _mcp_authorizer,
                 "EnvironmentVariables": {
                     "KNOWLEDGE_BASE_ID": self.knowledge_base.ref,
+                    "DOCS_BUCKET_NAME": self.docs_bucket.bucket_name,
                 },
                 "AgentRuntimeArtifact": {
-                    "CodeConfiguration": {
-                        "Code": {
-                            "S3": {
-                                "Bucket": docs_asset.s3_bucket_name,
-                                "Prefix": docs_asset.s3_object_key,
-                            }
-                        },
-                        "EntryPoint": ["server.py"],
-                        "Runtime": "PYTHON_3_12",
+                    "ContainerConfiguration": {
+                        "ContainerUri": docs_image.image_uri,
                     },
                 },
             },
         )
 
-        # Weather MCP Server Runtime
+        # Weather MCP Server Runtime (container)
         mcp_servers["weather"] = CfnResource(
             self,
             "WeatherMcpRuntime",
@@ -753,22 +981,37 @@ class BushRangerStack(Stack):
                 "RoleArn": self.iam_roles["weather"].role_arn,
                 "NetworkConfiguration": _network_public,
                 "ProtocolConfiguration": "MCP",
+                "AuthorizerConfiguration": _mcp_authorizer,
                 "AgentRuntimeArtifact": {
-                    "CodeConfiguration": {
-                        "Code": {
-                            "S3": {
-                                "Bucket": weather_asset.s3_bucket_name,
-                                "Prefix": weather_asset.s3_object_key,
-                            }
-                        },
-                        "EntryPoint": ["server.py"],
-                        "Runtime": "PYTHON_3_12",
+                    "ContainerConfiguration": {
+                        "ContainerUri": weather_image.image_uri,
                     },
                 },
             },
         )
 
-        # Strands Agent Runtime — connects to MCP servers via their ARNs
+        # Ensure IAM policies are fully created before runtimes validate ECR access
+        for key in ("wildlife_sightings", "conservation_docs", "weather"):
+            role_policy = self.iam_roles[key].node.try_find_child("DefaultPolicy")
+            if role_policy:
+                mcp_servers[key].node.add_dependency(role_policy)
+
+        # Grant agent role permission to invoke MCP server runtimes
+        self.iam_roles["agent"].add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock-agentcore:InvokeAgentRuntime"],
+                resources=[
+                    mcp_servers["wildlife_sightings"].get_att("AgentRuntimeArn").to_string(),
+                    mcp_servers["conservation_docs"].get_att("AgentRuntimeArn").to_string(),
+                    mcp_servers["weather"].get_att("AgentRuntimeArn").to_string(),
+                ],
+            )
+        )
+
+        # Ensure agent role IAM policy is created before runtime validates ECR
+        agent_role_policy = self.iam_roles["agent"].node.try_find_child("DefaultPolicy")
+
+        # Strands Agent Runtime (containerised for fast cold start)
         agent_runtime = CfnResource(
             self,
             "BushRangerAgentRuntime",
@@ -786,23 +1029,91 @@ class BushRangerStack(Stack):
                     .get_att("AgentRuntimeArn")
                     .to_string(),
                     "WEATHER_RUNTIME_ARN": mcp_servers["weather"].get_att("AgentRuntimeArn").to_string(),
+                    "COGNITO_TOKEN_URL": (
+                        f"https://bush-ranger-{self.account}.auth.{self.region}.amazoncognito.com/oauth2/token"
+                    ),
+                    "COGNITO_M2M_CLIENT_ID": self.m2m_client.user_pool_client_id,
+                    "COGNITO_M2M_CLIENT_SECRET": self.m2m_client.user_pool_client_secret.unsafe_unwrap(),
+                    "COGNITO_M2M_SCOPE": "mcp/invoke",
                 },
                 "AgentRuntimeArtifact": {
-                    "CodeConfiguration": {
-                        "Code": {
-                            "S3": {
-                                "Bucket": agent_asset.s3_bucket_name,
-                                "Prefix": agent_asset.s3_object_key,
-                            }
-                        },
-                        "EntryPoint": ["handler.py"],
-                        "Runtime": "PYTHON_3_12",
+                    "ContainerConfiguration": {
+                        "ContainerUri": agent_image.image_uri,
                     },
                 },
             },
         )
+        if agent_role_policy:
+            agent_runtime.node.add_dependency(agent_role_policy)
 
         return agent_runtime, mcp_servers
+
+    # ------------------------------------------------------------------
+    # 7.13 API Lambda
+    # ------------------------------------------------------------------
+    def _create_api_lambda(self) -> None:
+        """Create a Lambda that proxies API Gateway to the AgentCore Runtime."""
+        _services = Path(__file__).resolve().parent.parent.parent / "services"
+
+        api_fn = _lambda.Function(
+            self,
+            "ApiLambda",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="handler.handler",
+            code=_lambda.Code.from_asset(str(_services / "api")),
+            timeout=Duration.seconds(60),
+            memory_size=256,
+            environment={
+                "AGENT_RUNTIME_ARN": self.agent_runtime.get_att("AgentRuntimeArn").to_string(),
+                "CORS_ORIGIN": f"https://{self.distribution.distribution_domain_name}",
+            },
+        )
+
+        # Permission to invoke the agent runtime (including endpoints)
+        _rt_arn = self.agent_runtime.get_att("AgentRuntimeArn").to_string()
+        api_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock-agentcore:InvokeAgentRuntime"],
+                resources=[
+                    _rt_arn,
+                    cdk.Fn.join("", [_rt_arn, "/*"]),
+                ],
+            )
+        )
+
+        # API Gateway integration → Lambda
+        integration = apigwv2.CfnIntegration(
+            self,
+            "InvokeLambdaIntegration",
+            api_id=self.http_api.ref,
+            integration_type="AWS_PROXY",
+            integration_uri=api_fn.function_arn,
+            payload_format_version="2.0",
+        )
+
+        # Grant API Gateway permission to invoke the Lambda
+        api_fn.add_permission(
+            "ApiGwInvoke",
+            principal=iam.ServicePrincipal("apigateway.amazonaws.com"),
+            source_arn=cdk.Fn.join(
+                "",
+                [
+                    "arn:aws:execute-api:",
+                    self.region,
+                    ":",
+                    self.account,
+                    ":",
+                    self.http_api.ref,
+                    "/*/*/invoke",
+                ],
+            ),
+        )
+
+        # Wire the route to the integration
+        self.invoke_route.add_property_override(
+            "Target",
+            cdk.Fn.join("", ["integrations/", integration.ref]),
+        )
 
     # ------------------------------------------------------------------
     # 7.12 Stack Outputs

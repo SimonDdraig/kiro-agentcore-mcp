@@ -1,140 +1,214 @@
 # Copyright 2025 Bush Ranger AI Project. All rights reserved.
-"""Strands Agent entry point for Bush Ranger AI.
+"""Strands Agent entry point for Bush Ranger AI on AgentCore Runtime.
 
-Connects to four MCP servers via AgentCore and uses Claude Sonnet as the
-primary reasoning model with Claude Haiku available for lighter tasks.
+Uses BedrockAgentCoreApp to serve the agent via AgentCore's HTTP contract.
+Connects to MCP servers hosted on AgentCore via Streamable HTTP transport
+using Cognito access tokens obtained via client_credentials grant.
 """
 
 from __future__ import annotations
 
+import base64
 import logging
+import os
+from typing import Any
+from urllib.parse import quote
 
+import httpx
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from mcp.client.streamable_http import streamablehttp_client
 from strands import Agent
 from strands.models.bedrock import BedrockModel
 from strands.tools.mcp import MCPClient
-from strands_tools import AgentSkills
-
-from services.agent.prompts import load_model_config, load_system_prompt
-from services.agent.steering.data_quality import data_quality_handler
-from services.agent.steering.safety import safety_handler
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# MCP server names as registered in AgentCore
+# AgentCore app
 # ---------------------------------------------------------------------------
-MCP_SERVER_WILDLIFE_SIGHTINGS = "wildlife_sightings"
-MCP_SERVER_CONSERVATION_DOCS = "conservation_docs"
-MCP_SERVER_WEATHER = "weather"
-MCP_SERVER_FETCH = "fetch_server"
+app = BedrockAgentCoreApp()
 
-ALL_MCP_SERVERS = [
-    MCP_SERVER_WILDLIFE_SIGHTINGS,
-    MCP_SERVER_CONSERVATION_DOCS,
-    MCP_SERVER_WEATHER,
-    MCP_SERVER_FETCH,
-]
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+PRIMARY_MODEL_ID = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+TEMPERATURE = 0.3
+REGION = os.environ.get("AWS_REGION", "us-east-1")
+
+SYSTEM_PROMPT = """\
+You are Bush Ranger AI, an Australian park ranger assistant specializing in
+wildlife tracking, conservation management, and environmental monitoring.
+
+You help park rangers across Australia by:
+- Recording and querying wildlife sightings (species, location, conservation status)
+- Retrieving conservation documents including species fact sheets, management plans,
+  and emergency procedures
+- Checking current weather conditions, forecasts, and fire danger assessments
+  for Australian locations
+
+You are knowledgeable, helpful, and safety-conscious. When fire danger is elevated,
+always prioritise ranger safety and include emergency contact information (000).
+
+Safety guidelines by fire danger level:
+- high: Increased vigilance, check fire breaks, ensure comms equipment ready
+- very_high: Restrict field activities to essential only, notify base of location
+- extreme: Evacuate to safe zones, cease all non-emergency field operations
+
+Data quality rules:
+- Coordinates must be within Australia (lat: -44 to -10, lng: 113 to 154)
+- Conservation status must be one of: critically_endangered, endangered,
+  vulnerable, near_threatened, least_concern
+- Sighting dates must not be in the future
+"""
+
+# MCP server runtime ARNs (set by CDK as env vars)
+WILDLIFE_RUNTIME_ARN = os.environ.get("WILDLIFE_SIGHTINGS_RUNTIME_ARN", "")
+DOCS_RUNTIME_ARN = os.environ.get("CONSERVATION_DOCS_RUNTIME_ARN", "")
+WEATHER_RUNTIME_ARN = os.environ.get("WEATHER_RUNTIME_ARN", "")
+
+# Cognito M2M credentials (set by CDK as env vars)
+COGNITO_TOKEN_URL = os.environ.get("COGNITO_TOKEN_URL", "")
+COGNITO_M2M_CLIENT_ID = os.environ.get("COGNITO_M2M_CLIENT_ID", "")
+COGNITO_M2M_CLIENT_SECRET = os.environ.get("COGNITO_M2M_CLIENT_SECRET", "")
+COGNITO_M2M_SCOPE = os.environ.get("COGNITO_M2M_SCOPE", "mcp/invoke")
 
 
-def _build_bedrock_model(model_id: str, temperature: float, region: str) -> BedrockModel:
-    """Create a Bedrock model instance for the given model ID.
+# ---------------------------------------------------------------------------
+# Cognito client_credentials token retrieval
+# ---------------------------------------------------------------------------
+_cached_token: str = ""
+_token_expiry: float = 0.0
 
-    Args:
-        model_id: Amazon Bedrock model identifier.
-        temperature: Sampling temperature.
-        region: AWS region for the Bedrock endpoint.
 
-    Returns:
-        Configured ``BedrockModel`` instance.
+def _get_cognito_access_token() -> str:
+    """Obtain a Cognito access token via client_credentials grant.
+
+    Caches the token and refreshes when expired.
     """
-    return BedrockModel(
-        model_id=model_id,
-        temperature=temperature,
-        region_name=region,
-    )
+    import time  # noqa: PLC0415
+
+    global _cached_token, _token_expiry  # noqa: PLW0603
+
+    now = time.time()
+    if _cached_token and now < _token_expiry - 60:
+        return _cached_token
+
+    if not COGNITO_TOKEN_URL or not COGNITO_M2M_CLIENT_ID or not COGNITO_M2M_CLIENT_SECRET:
+        logger.warning("Cognito M2M credentials not configured, cannot obtain token")
+        return ""
+
+    # client_secret_basic: Base64(client_id:client_secret)
+    credentials = base64.b64encode(f"{COGNITO_M2M_CLIENT_ID}:{COGNITO_M2M_CLIENT_SECRET}".encode()).decode()
+
+    try:
+        resp = httpx.post(
+            COGNITO_TOKEN_URL,
+            headers={
+                "Authorization": f"Basic {credentials}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            data={
+                "grant_type": "client_credentials",
+                "scope": COGNITO_M2M_SCOPE,
+            },
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        token_data = resp.json()
+        _cached_token = token_data["access_token"]
+        _token_expiry = now + token_data.get("expires_in", 3600)
+        logger.info("Obtained Cognito M2M access token (expires in %ds)", token_data.get("expires_in", 3600))
+        return _cached_token
+    except Exception:
+        logger.exception("Failed to obtain Cognito M2M access token")
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Helper: build MCP clients for AgentCore-hosted MCP servers
+# ---------------------------------------------------------------------------
+
+
+def _runtime_arn_to_endpoint(arn: str) -> str:
+    """Construct the AgentCore invocation URL from a runtime ARN."""
+    base = f"https://bedrock-agentcore.{REGION}.amazonaws.com"
+    encoded_arn = quote(arn, safe="")
+    return f"{base}/runtimes/{encoded_arn}/invocations?qualifier=DEFAULT"
 
 
 def _build_mcp_clients() -> list[MCPClient]:
-    """Create MCP client connections for all four AgentCore MCP servers.
-
-    Returns:
-        List of ``MCPClient`` instances, one per MCP server.
-    """
+    """Create MCPClient instances that connect via Streamable HTTP with Cognito auth."""
     clients: list[MCPClient] = []
-    for server_name in ALL_MCP_SERVERS:
-        client = MCPClient(server_name=server_name)  # type: ignore[call-arg]
+    endpoints = [
+        ("wildlife_sightings", WILDLIFE_RUNTIME_ARN),
+        ("conservation_docs", DOCS_RUNTIME_ARN),
+        ("weather", WEATHER_RUNTIME_ARN),
+    ]
+
+    for name, arn in endpoints:
+        if not arn:
+            logger.warning("Runtime ARN not configured for %s, skipping", name)
+            continue
+
+        mcp_url = _runtime_arn_to_endpoint(arn)
+
+        def _make_transport(endpoint: str = mcp_url) -> Any:  # noqa: E731
+            token = _get_cognito_access_token()
+            headers: dict[str, str] = {}
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            return streamablehttp_client(endpoint, headers=headers)
+
+        client = MCPClient(_make_transport)
         clients.append(client)
+
     return clients
 
 
-def create_primary_agent() -> Agent:
-    """Create the primary Bush Ranger AI agent (Claude Sonnet).
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
 
-    The agent is wired to all four MCP servers via AgentCore and configured
-    with the AgentSkills plugin plus both LLMSteeringHandler plugins for
-    data quality and safety.
 
-    Returns:
-        Fully configured ``Agent`` instance ready to handle requests.
-    """
-    system_prompt = load_system_prompt()
-    model_config = load_model_config()
+@app.entrypoint
+def invoke(payload: dict[str, Any], context: object) -> dict[str, str]:
+    """Handle an invocation from the API Lambda via AgentCore Runtime."""
+    user_message = payload.get("prompt", "Hello!")
 
-    primary_model_id: str = model_config["models"]["primary"]["model_id"]
-    temperature: float = float(model_config["inference"]["temperature"])
-    region: str = str(model_config["inference"]["region"])
-
-    model = _build_bedrock_model(primary_model_id, temperature, region)
-    mcp_clients = _build_mcp_clients()
-
-    # AgentSkills plugin — loads skill definitions from ./skills/ on demand
-    skills_plugin = AgentSkills(skills="./skills/")
-
-    agent = Agent(
-        model=model,
-        system_prompt=system_prompt,
-        tools=mcp_clients,  # type: ignore[arg-type]
-        plugins=[skills_plugin, data_quality_handler, safety_handler],
+    model = BedrockModel(
+        model_id=PRIMARY_MODEL_ID,
+        temperature=TEMPERATURE,
+        region_name=REGION,
     )
 
-    logger.info(
-        "Primary agent created with model=%s, temperature=%s, region=%s",
-        primary_model_id,
-        temperature,
-        region,
-    )
-    return agent
-
-
-def create_secondary_agent() -> Agent:
-    """Create the secondary Bush Ranger AI agent (Claude Haiku).
-
-    Used for lighter classification, summarisation, and formatting tasks
-    to minimise per-invocation model costs.
-
-    Returns:
-        Configured ``Agent`` instance using the Haiku model.
-    """
-    system_prompt = load_system_prompt()
-    model_config = load_model_config()
-
-    secondary_model_id: str = model_config["models"]["secondary"]["model_id"]
-    temperature: float = float(model_config["inference"]["temperature"])
-    region: str = str(model_config["inference"]["region"])
-
-    model = _build_bedrock_model(secondary_model_id, temperature, region)
     mcp_clients = _build_mcp_clients()
 
     agent = Agent(
         model=model,
-        system_prompt=system_prompt,
+        system_prompt=SYSTEM_PROMPT,
         tools=mcp_clients,  # type: ignore[arg-type]
     )
 
-    logger.info(
-        "Secondary agent created with model=%s, temperature=%s, region=%s",
-        secondary_model_id,
-        temperature,
-        region,
-    )
-    return agent
+    logger.info("Invoking agent with message: %s", user_message[:100])
+
+    try:
+        result = agent(user_message)
+        response_text = result.message.get("content", [{}])[0].get("text", str(result))
+        return {"result": response_text}
+    except Exception:
+        logger.exception("Agent invocation failed")
+        return {"error": "Agent processing failed"}
+    finally:
+        for client in mcp_clients:
+            try:
+                client.__exit__(None, None, None)  # type: ignore[arg-type]
+            except Exception:
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    app.run()

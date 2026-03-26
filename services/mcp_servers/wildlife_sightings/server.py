@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import os
+import sys
 import uuid
 from typing import Any
 
@@ -13,17 +15,27 @@ import boto3
 from boto3.dynamodb.conditions import Attr, Key
 from mcp.server.fastmcp import FastMCP
 
-from models.sightings import (
-    GSI_NAME,
-    PARTITION_KEY,
-    SORT_KEY,
-    TABLE_NAME,
-)
+# Inlined from models.sightings — the models/ package is not available
+# in the AgentCore runtime zip (each service is packaged independently).
+TABLE_NAME = "BushRangerSightings"
+PARTITION_KEY = "species"
+SORT_KEY = "date_location"
+GSI_NAME = "conservation_status-date-index"
 
 # ---------------------------------------------------------------------------
 # MCP server instance
 # ---------------------------------------------------------------------------
-mcp = FastMCP("wildlife-sightings")
+mcp = FastMCP("wildlife-sightings", host="0.0.0.0", stateless_http=True)
+
+_handler = logging.StreamHandler(sys.stderr)
+_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+_root = logging.getLogger()
+_root.handlers.clear()
+_root.setLevel(logging.INFO)
+_root.addHandler(_handler)
+
+logger = logging.getLogger(__name__)
+logger.info("Wildlife sightings server starting")
 
 # ---------------------------------------------------------------------------
 # DynamoDB helpers
@@ -306,4 +318,4 @@ def query_by_status(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="streamable-http")

@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import Box from '@cloudscape-design/components/box';
 import SpaceBetween from '@cloudscape-design/components/space-between';
 import StatusIndicator from '@cloudscape-design/components/status-indicator';
+import Markdown from 'react-markdown';
 import type { ChatMessage } from '../types';
 
 interface MessageListProps {
@@ -46,7 +47,13 @@ export function MessageList({ messages, isLoading }: MessageListProps): React.JS
                 <Box fontWeight="bold" fontSize="body-s">
                   {message.role === 'user' ? 'You' : 'Bush Ranger AI'}
                 </Box>
-                <Box variant="p">{message.content}</Box>
+                <Box variant="p">
+                  {message.role === 'agent' ? (
+                    <Markdown>{message.content}</Markdown>
+                  ) : (
+                    message.content
+                  )}
+                </Box>
               </SpaceBetween>
             </Box>
           </div>

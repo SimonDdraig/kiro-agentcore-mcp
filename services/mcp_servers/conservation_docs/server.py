@@ -6,25 +6,49 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import sys
+
+# Inlined from models.documents — the models/ package is not available
+# in the AgentCore runtime zip (each service is packaged independently).
+from dataclasses import dataclass
 from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
 from mcp.server.fastmcp import FastMCP
 
-from models.documents import CATEGORIES, DOCS_BUCKET_PREFIX, DocumentMetadata
+DOCS_BUCKET_PREFIX = "bush-ranger-docs"
+CATEGORIES = ("species", "management_plans", "emergency")
+
+
+@dataclass
+class DocumentMetadata:
+    """Metadata for a conservation document in S3."""
+
+    key: str
+    title: str
+    category: str
+
 
 # ---------------------------------------------------------------------------
 # MCP server instance
 # ---------------------------------------------------------------------------
-mcp = FastMCP("conservation-docs")
+mcp = FastMCP("conservation-docs", host="0.0.0.0", stateless_http=True)
 
 # ---------------------------------------------------------------------------
 # Module-level configuration
 # ---------------------------------------------------------------------------
+_handler = logging.StreamHandler(sys.stderr)
+_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+_root = logging.getLogger()
+_root.handlers.clear()
+_root.setLevel(logging.INFO)
+_root.addHandler(_handler)
+
 logger = logging.getLogger(__name__)
 
 _KNOWLEDGE_BASE_ID = os.environ.get("KNOWLEDGE_BASE_ID")
+logger.info("Conservation docs server starting — KNOWLEDGE_BASE_ID=%s", _KNOWLEDGE_BASE_ID)
 
 # ---------------------------------------------------------------------------
 # S3 helpers
@@ -154,6 +178,7 @@ def list_documents(category: str) -> dict[str, Any]:
     Returns:
         A dict with a 'documents' list of document metadata and a 'count'.
     """
+    logger.info("list_documents called — category=%s", category)
     if category not in CATEGORIES:
         return {
             "error": "validation_error",
@@ -192,6 +217,7 @@ def get_document(document_key: str) -> dict[str, Any]:
         A dict with 'key', 'content', and 'content_type', or a structured
         error if the document is not found.
     """
+    logger.info("get_document called — document_key=%s", document_key)
     s3 = _get_s3_client()
 
     try:
@@ -249,6 +275,14 @@ def search_documents(query: str, max_results: int = 5, category: str | None = No
         logger.warning("KNOWLEDGE_BASE_ID is not set — falling back to substring search.")
         return _fallback_search(query)
 
+    logger.info(
+        "search_documents: querying KB %s — query=%r, max_results=%d, category=%s",
+        _KNOWLEDGE_BASE_ID,
+        query,
+        clamped_max_results,
+        category,
+    )
+
     try:
         client = _get_bedrock_agent_runtime_client()
         vector_search_config: dict[str, Any] = {
@@ -268,7 +302,9 @@ def search_documents(query: str, max_results: int = 5, category: str | None = No
                 "vectorSearchConfiguration": vector_search_config,
             },
         )
+        logger.info("search_documents: KB returned %d results", len(response.get("retrievalResults", [])))
     except ClientError as exc:
+        logger.exception("search_documents: KB retrieve failed — %s", exc)
         return {
             "error": "retrieval_error",
             "message": f"Failed to retrieve from Knowledge Base: {exc}",
@@ -305,4 +341,4 @@ def search_documents(query: str, max_results: int = 5, category: str | None = No
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="streamable-http")

@@ -21,10 +21,10 @@ system_prompt: |
 
 models:
   primary:
-    model_id: anthropic.claude-sonnet-4-20250514
+    model_id: global.anthropic.claude-sonnet-4-5-20250929-v1:0
     description: Primary reasoning model for complex tasks
   secondary:
-    model_id: anthropic.claude-haiku-4-20250514
+    model_id: global.anthropic.claude-haiku-4-5-20251001-v1:0
     description: Lightweight model for simple lookups and classification
 
 inference:
