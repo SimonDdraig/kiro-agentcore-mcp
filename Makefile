@@ -1,4 +1,10 @@
-.PHONY: lint typecheck lint-frontend format check-all
+.PHONY: lint typecheck lint-frontend format check-all sync-shared
+
+sync-shared:
+	cp services/shared/logging_config.py services/agent/logging_config.py
+	cp services/shared/logging_config.py services/mcp_servers/wildlife_sightings/logging_config.py
+	cp services/shared/logging_config.py services/mcp_servers/conservation_docs/logging_config.py
+	cp services/shared/logging_config.py services/mcp_servers/weather/logging_config.py
 
 lint:
 	ruff check . --fix
@@ -15,5 +21,5 @@ format:
 	ruff format .
 	cd frontend && npx prettier --write src/
 
-check-all: lint typecheck lint-frontend
+check-all: sync-shared lint typecheck lint-frontend
 	@echo "All checks passed"

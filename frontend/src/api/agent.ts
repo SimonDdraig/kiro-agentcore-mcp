@@ -33,18 +33,25 @@ function sanitizeError(message: string): string {
  * Sends a POST request to /invoke with the user's message and Bearer token.
  * Enforces a 30-second timeout.
  */
-export async function invokeAgent(message: string, accessToken: string | null): Promise<Response> {
+export async function invokeAgent(
+  message: string,
+  accessToken: string | null,
+  location?: { lat: number; lng: number } | null,
+): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    const body: Record<string, unknown> = { message };
+    if (location) body.location = location;
+
     const response = await fetch(`${API_ENDPOINT}/invoke`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
 

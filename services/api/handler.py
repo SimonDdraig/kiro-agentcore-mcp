@@ -33,7 +33,11 @@ def handler(event: dict[str, object], context: object) -> dict[str, object]:
             return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": "Missing 'message' field"})}
 
         session_id = body.get("sessionId") or str(uuid.uuid4())
-        payload = json.dumps({"prompt": message}).encode()
+        agent_payload: dict[str, object] = {"prompt": message}
+        location = body.get("location")
+        if location:
+            agent_payload["location"] = location
+        payload = json.dumps(agent_payload).encode()
 
         response = agentcore.invoke_agent_runtime(
             agentRuntimeArn=AGENT_RUNTIME_ARN,
@@ -41,21 +45,20 @@ def handler(event: dict[str, object], context: object) -> dict[str, object]:
             payload=payload,
         )
 
-        # Collect the streamed response
-        content_type = response.get("contentType", "")
-        chunks: list[str] = []
+        # Read the full response body
+        raw = response["response"].read()
+        result = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
 
-        if "text/event-stream" in content_type:
-            for line in response["response"].iter_lines(chunk_size=1024):
-                if line:
-                    decoded = line.decode("utf-8")
-                    if decoded.startswith("data: "):
-                        chunks.append(decoded[6:])
-        else:
-            for chunk in response.get("response", []):
-                chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk))
+        logger.info("content_type=%s, result_len=%d", response.get("contentType", ""), len(result))
+        logger.info("result_first200=%s", repr(result[:200]))
 
-        result = "\n".join(chunks) if chunks else "No response from agent."
+        # The agent returns JSON like '{"result": "..."}' — extract the text
+        try:
+            parsed = json.loads(result)
+            if isinstance(parsed, dict) and "result" in parsed:
+                result = parsed["result"]
+        except (json.JSONDecodeError, TypeError):
+            pass
 
         return {
             "statusCode": 200,

@@ -32,7 +32,7 @@ export function MessageInput({ onSend, isLoading, error }: MessageInputProps): R
     <SpaceBetween size="s">
       {error && <Alert type="error">{error}</Alert>}
       <FormField>
-        <SpaceBetween direction="horizontal" size="xs">
+        <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
           <div style={{ flex: 1 }}>
             <Input
               value={value}
@@ -50,7 +50,7 @@ export function MessageInput({ onSend, isLoading, error }: MessageInputProps): R
           >
             Send
           </Button>
-        </SpaceBetween>
+        </div>
       </FormField>
     </SpaceBetween>
   );

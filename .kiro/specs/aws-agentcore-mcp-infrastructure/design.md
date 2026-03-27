@@ -74,12 +74,13 @@ sequenceDiagram
     Cognito-->>Ranger: JWT tokens (ID, access, refresh)
 
     Ranger->>App: Type message in chat
-    App->>APIGW: POST /invoke (Authorization: Bearer <access_token>)
+    App->>App: Attach browser geolocation (if available)
+    App->>APIGW: POST /invoke (Authorization: Bearer <access_token>, body includes location)
     APIGW->>APIGW: Validate JWT (Cognito Authorizer)
-    APIGW->>Agent: Route to AgentCore
+    APIGW->>Agent: Route to AgentCore (payload includes prompt + location)
     Agent-->>APIGW: Agent response
     APIGW-->>App: JSON response
-    App-->>Ranger: Display in chat
+    App-->>Ranger: Display rendered markdown in chat
 ```
 
 ### Project Structure
@@ -436,8 +437,16 @@ HTTP API is up to 71% cheaper than REST API, has lower latency, supports JWT aut
 Request:
 ```json
 {
-  "message": "What's the weather like at Kakadu National Park?"
+  "message": "What's the weather like at Kakadu National Park?",
+  "location": { "lat": -31.95, "lng": 115.86 }
 }
+```
+
+The `location` field is optional. When present, it contains the user's browser
+geolocation (obtained via `navigator.geolocation.getCurrentPosition()`). The API
+Lambda passes it through to the agent payload, where it is prepended to the user
+message so the agent can resolve "my area", "here", or "near me" to actual
+coordinates without asking the user.
 ```
 
 Response:
@@ -474,6 +483,7 @@ interface ChatMessage {
 ```typescript
 interface InvokeRequest {
   message: string;
+  location?: { lat: number; lng: number };
 }
 ```
 

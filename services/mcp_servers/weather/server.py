@@ -5,25 +5,22 @@ from __future__ import annotations
 
 import logging
 import math
-import sys
 from typing import Any
 
 import requests
 from mcp.server.fastmcp import FastMCP
+
+try:
+    from logging_config import setup_logging
+except ModuleNotFoundError:
+    from services.shared.logging_config import setup_logging
 
 # ---------------------------------------------------------------------------
 # AgentCore Runtime app + MCP server instance
 # ---------------------------------------------------------------------------
 mcp = FastMCP("weather-climate", host="0.0.0.0", stateless_http=True)
 
-# Configure logging to write to both stdout and stderr so AgentCore captures it
-_handler = logging.StreamHandler(sys.stderr)
-_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-_root = logging.getLogger()
-_root.handlers.clear()
-_root.setLevel(logging.INFO)
-_root.addHandler(_handler)
-
+setup_logging()
 logger = logging.getLogger(__name__)
 logger.info("Weather server starting")
 

@@ -76,3 +76,16 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "services.agent.steering.*"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "logging_config"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "services.mcp_servers.wildlife_sightings.server",
+    "services.mcp_servers.conservation_docs.server",
+    "services.mcp_servers.weather.server",
+    "services.agent.handler",
+]
+disable_error_code = ["import-not-found"]

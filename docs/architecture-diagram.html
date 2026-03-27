@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<!-- Copyright 2025 Bush Ranger AI Project. All rights reserved. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bush Ranger AI — Architecture Diagram</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Amazon Ember', 'Helvetica Neue', Arial, sans-serif; background: #f8f9fa; padding: 30px; }
+  h1 { text-align: center; color: #232f3e; margin-bottom: 4px; font-size: 26px; }
+  .subtitle { text-align: center; color: #687078; margin-bottom: 24px; font-size: 13px; }
+
+  .row { display: flex; justify-content: center; align-items: flex-start; gap: 24px; margin-bottom: 8px; }
+  .connector { display: flex; justify-content: center; padding: 4px 0; }
+  .connector .arrow { color: #0073bb; font-size: 20px; line-height: 1; }
+  .connector .arrow.red { color: #d13212; }
+  .connector .arrow-label { font-size: 10px; color: #687078; margin: 0 8px; }
+  .connector-row { display: flex; justify-content: center; gap: 80px; padding: 4px 0; }
+
+  .node {
+    text-align: center; width: 130px;
+    background: #fff; border: 2px solid #d5dbdb; border-radius: 8px;
+    padding: 12px 8px 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+  }
+  .node.highlight { border-color: #0073bb; background: #f0f8ff; }
+  .node.external { border-color: #879196; border-style: dashed; }
+  .node img { width: 44px; height: 44px; margin-bottom: 6px; display: block; margin-left: auto; margin-right: auto; }
+  .node .label { font-size: 11px; font-weight: 700; color: #232f3e; line-height: 1.3; }
+  .node .sublabel { font-size: 9px; color: #687078; margin-top: 2px; }
+
+  .group-box {
+    border: 2px dashed #0073bb; border-radius: 12px; padding: 16px 20px 12px;
+    background: rgba(0,115,187,0.03); position: relative; margin: 0 auto;
+    display: inline-block;
+  }
+  .group-box .group-label {
+    position: absolute; top: -11px; left: 20px; background: #f8f9fa;
+    padding: 0 8px; font-size: 11px; font-weight: 700; color: #0073bb;
+  }
+  .group-box .row { margin-bottom: 0; }
+
+  .spacer { width: 130px; }
+
+  .legend { display: flex; gap: 20px; justify-content: center; margin-top: 20px; font-size: 11px; color: #687078; }
+</style>
+</head>
+<body>
+<h1>🌿 Bush Ranger AI — Architecture</h1>
+<p class="subtitle">AWS AgentCore · MCP Servers · React Frontend · Amazon Bedrock</p>
+
+<!-- Row 1: User + CloudFront + S3 Frontend + Cognito -->
+<div class="row">
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/user-male-circle.png" alt="User"/>
+    <div class="label">Park Ranger</div>
+    <div class="sublabel">Browser + Geolocation</div>
+  </div>
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/cloud.png" alt="CloudFront"/>
+    <div class="label">CloudFront</div>
+    <div class="sublabel">CDN · HTTPS · OAC</div>
+  </div>
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/amazon-s3.png" alt="S3"/>
+    <div class="label">S3 Bucket</div>
+    <div class="sublabel">React Frontend</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/lock--v1.png" alt="Cognito"/>
+    <div class="label">Amazon Cognito</div>
+    <div class="sublabel">User Pool · JWT Auth</div>
+  </div>
+</div>
+
+<div class="connector"><span class="arrow">▼</span><span class="arrow-label">HTTPS + JWT</span></div>
+
+<!-- Row 2: API Gateway -->
+<div class="row">
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/api-settings.png" alt="API GW"/>
+    <div class="label">HTTP API Gateway</div>
+    <div class="sublabel">JWT Authorizer · CORS</div>
+  </div>
+</div>
+
+<div class="connector"><span class="arrow">▼</span><span class="arrow-label">POST /invoke</span></div>
+
+<!-- Row 3: Lambda -->
+<div class="row">
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/lambda.png" alt="Lambda"/>
+    <div class="label">Lambda</div>
+    <div class="sublabel">API Proxy · InvokeAgentRuntime</div>
+  </div>
+</div>
+
+<div class="connector"><span class="arrow">▼</span><span class="arrow-label">AgentCore SDK</span></div>
+
+<!-- Row 4: AgentCore group -->
+<div style="text-align:center;">
+<div class="group-box">
+  <span class="group-label">Amazon Bedrock AgentCore</span>
+
+  <!-- Agent -->
+  <div class="row" style="margin-bottom:12px;">
+    <div class="spacer"></div>
+    <div class="node highlight">
+      <img src="https://img.icons8.com/color/96/bot.png" alt="Agent"/>
+      <div class="label">Bush Ranger Agent</div>
+      <div class="sublabel">Strands SDK · Claude Sonnet</div>
+    </div>
+    <div style="display:flex; align-items:center; padding:0 12px;">
+      <span style="color:#0073bb; font-size:24px;">→</span>
+    </div>
+    <div class="node">
+      <img src="https://img.icons8.com/color/96/artificial-intelligence.png" alt="Bedrock"/>
+      <div class="label">Amazon Bedrock</div>
+      <div class="sublabel">Claude Sonnet 4.5</div>
+    </div>
+  </div>
+
+  <div class="connector-row">
+    <span class="arrow">▼</span>
+    <span class="arrow">▼</span>
+    <span class="arrow">▼</span>
+  </div>
+
+  <!-- MCP Servers -->
+  <div class="row">
+    <div class="node highlight">
+      <img src="https://img.icons8.com/color/96/kangaroo.png" alt="Wildlife"/>
+      <div class="label">Wildlife Sightings</div>
+      <div class="sublabel">MCP Server · DynamoDB</div>
+    </div>
+    <div class="node highlight">
+      <img src="https://img.icons8.com/color/96/document--v1.png" alt="Docs"/>
+      <div class="label">Conservation Docs</div>
+      <div class="sublabel">MCP Server · S3 + KB</div>
+    </div>
+    <div class="node highlight">
+      <img src="https://img.icons8.com/color/96/partly-cloudy-day--v1.png" alt="Weather"/>
+      <div class="label">Weather & Fire</div>
+      <div class="sublabel">MCP Server · Open-Meteo</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="connector-row" style="justify-content:center; gap:80px; padding-top:8px;">
+  <span class="arrow">▼</span>
+  <span class="arrow">▼</span>
+  <span class="arrow">▼</span>
+  <span class="arrow">▼</span>
+</div>
+
+<!-- Row 5: Data stores -->
+<div class="row">
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/amazon-dynamodb.png" alt="DynamoDB"
+         onerror="this.src='https://img.icons8.com/color/96/database.png'"/>
+    <div class="label">DynamoDB</div>
+    <div class="sublabel">Sightings Table</div>
+  </div>
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/amazon-s3.png" alt="S3"/>
+    <div class="label">S3 Bucket</div>
+    <div class="sublabel">Conservation Docs</div>
+  </div>
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/search--v1.png" alt="KB"/>
+    <div class="label">Knowledge Base</div>
+    <div class="sublabel">S3 Vectors · Titan Embed</div>
+  </div>
+  <div class="node external">
+    <img src="https://img.icons8.com/color/96/globe--v1.png" alt="Open-Meteo"/>
+    <div class="label">Open-Meteo API</div>
+    <div class="sublabel">External · Free</div>
+  </div>
+</div>
+
+<div class="legend">
+  <span>🔵 Blue border = AgentCore runtime</span>
+  <span>⬜ Solid border = AWS service</span>
+  <span>⬜ Dashed border = External service</span>
+  <span>▼ = Data flow direction</span>
+</div>
+
+</body>
+</html>

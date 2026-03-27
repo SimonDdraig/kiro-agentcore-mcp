@@ -6,7 +6,6 @@ from __future__ import annotations
 import base64
 import logging
 import os
-import sys
 
 # Inlined from models.documents — the models/ package is not available
 # in the AgentCore runtime zip (each service is packaged independently).
@@ -16,6 +15,11 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 from mcp.server.fastmcp import FastMCP
+
+try:
+    from logging_config import setup_logging
+except ModuleNotFoundError:
+    from services.shared.logging_config import setup_logging
 
 DOCS_BUCKET_PREFIX = "bush-ranger-docs"
 CATEGORIES = ("species", "management_plans", "emergency")
@@ -38,13 +42,7 @@ mcp = FastMCP("conservation-docs", host="0.0.0.0", stateless_http=True)
 # ---------------------------------------------------------------------------
 # Module-level configuration
 # ---------------------------------------------------------------------------
-_handler = logging.StreamHandler(sys.stderr)
-_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-_root = logging.getLogger()
-_root.handlers.clear()
-_root.setLevel(logging.INFO)
-_root.addHandler(_handler)
-
+setup_logging()
 logger = logging.getLogger(__name__)
 
 _KNOWLEDGE_BASE_ID = os.environ.get("KNOWLEDGE_BASE_ID")

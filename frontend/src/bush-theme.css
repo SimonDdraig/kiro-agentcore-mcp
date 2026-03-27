@@ -1,0 +1,104 @@
+/* Copyright 2025 Bush Ranger AI Project. All rights reserved. */
+/* Bush Ranger AI — Australian bush colour palette + subtle dot pattern */
+
+:root {
+  --bush-green: #2d5016;
+  --bush-green-light: #4a7c28;
+  --eucalyptus: #6b8f4e;
+  --ochre: #cc7722;
+  --terracotta: #c04000;
+  --bark-brown: #3e2723;
+  --sand: #f5e6c8;
+  --cream: #faf6ee;
+}
+
+/* Top navigation bar — deep bush green */
+header[class*="awsui_header"] {
+  background: linear-gradient(135deg, var(--bush-green) 0%, var(--bush-green-light) 100%) !important;
+}
+
+/* Body background — rich dot pattern with earthy + blue tones */
+body {
+  background-color: #1a1a2e !important;
+  background-image:
+    /* Large concentric circle hints */
+    radial-gradient(circle at 15% 30%, rgba(204, 119, 34, 0.3) 0%, transparent 25%),
+    radial-gradient(circle at 75% 60%, rgba(192, 64, 0, 0.25) 0%, transparent 20%),
+    radial-gradient(circle at 50% 80%, rgba(0, 160, 200, 0.2) 0%, transparent 30%),
+    radial-gradient(circle at 85% 20%, rgba(0, 180, 220, 0.15) 0%, transparent 25%),
+    /* Medium dots — ochre */
+    radial-gradient(circle, var(--ochre) 2.5px, transparent 2.5px),
+    /* Medium dots — cyan offset */
+    radial-gradient(circle, rgba(0, 180, 220, 0.7) 2px, transparent 2px),
+    /* Small dots — white */
+    radial-gradient(circle, rgba(255, 255, 255, 0.5) 1.5px, transparent 1.5px),
+    /* Small dots — terracotta */
+    radial-gradient(circle, rgba(192, 64, 0, 0.5) 1.5px, transparent 1.5px),
+    /* Tiny dots — cyan scatter */
+    radial-gradient(circle, rgba(0, 200, 240, 0.4) 1px, transparent 1px),
+    /* Tiny dots — white scatter */
+    radial-gradient(circle, rgba(255, 255, 255, 0.3) 1px, transparent 1px);
+  background-size:
+    100% 100%, 100% 100%, 100% 100%, 100% 100%,
+    32px 32px, 28px 28px, 20px 20px, 24px 24px, 15px 15px, 18px 18px;
+  background-position:
+    0 0, 0 0, 0 0, 0 0,
+    0 0, 14px 8px, 6px 10px, 18px 4px, 3px 7px, 9px 13px;
+}
+
+/* AppLayout main content area */
+main[class*="awsui_content"] {
+  background: transparent !important;
+}
+
+/* Container headers — ochre accent */
+h2[class*="awsui_heading-text"] {
+  color: var(--bark-brown) !important;
+}
+
+/* Primary buttons — bush green */
+button[class*="awsui_variant-primary"] {
+  background-color: var(--bush-green-light) !important;
+  border-color: var(--bush-green) !important;
+}
+button[class*="awsui_variant-primary"]:hover {
+  background-color: var(--bush-green) !important;
+}
+
+/* Quick action buttons — ochre outline */
+.bush-ranger-suggestions button {
+  border-color: var(--ochre) !important;
+  color: var(--bark-brown) !important;
+}
+.bush-ranger-suggestions button:hover {
+  background-color: var(--sand) !important;
+  border-color: var(--terracotta) !important;
+}
+
+/* Containers — warm white with slight transparency */
+div[class*="awsui_root"][class*="awsui_variant-default"] {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-color: var(--eucalyptus) !important;
+}
+
+/* Loading spinner — ochre */
+span[class*="awsui_circle"] {
+  stroke: var(--ochre) !important;
+}
+
+/* Links — bush green */
+a {
+  color: var(--bush-green-light) !important;
+}
+
+/* Scrollbar — earthy tones */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--eucalyptus);
+  border-radius: 4px;
+}

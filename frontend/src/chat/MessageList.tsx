@@ -47,7 +47,7 @@ export function MessageList({ messages, isLoading }: MessageListProps): React.JS
                 <Box fontWeight="bold" fontSize="body-s">
                   {message.role === 'user' ? 'You' : 'Bush Ranger AI'}
                 </Box>
-                <Box variant="p">
+                <Box>
                   {message.role === 'agent' ? (
                     <Markdown>{message.content}</Markdown>
                   ) : (

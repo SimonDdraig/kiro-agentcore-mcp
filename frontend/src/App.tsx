@@ -4,6 +4,7 @@ import AppLayout from '@cloudscape-design/components/app-layout';
 import TopNavigation from '@cloudscape-design/components/top-navigation';
 import Spinner from '@cloudscape-design/components/spinner';
 import '@cloudscape-design/global-styles/index.css';
+import './bush-theme.css';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { SignIn } from './auth/SignIn';
 import { ChatPage } from './chat/ChatPage';
@@ -30,7 +31,7 @@ function AppContent(): React.JSX.Element {
       <TopNavigation
         identity={{
           href: '/',
-          title: 'Bush Ranger AI',
+          title: '🌿 Bush Ranger AI',
         }}
         utilities={[
           {

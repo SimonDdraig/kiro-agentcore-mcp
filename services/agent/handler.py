@@ -21,6 +21,12 @@ from strands import Agent
 from strands.models.bedrock import BedrockModel
 from strands.tools.mcp import MCPClient
 
+try:
+    from logging_config import setup_logging
+except ModuleNotFoundError:
+    from services.shared.logging_config import setup_logging
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -59,6 +65,16 @@ Data quality rules:
 - Conservation status must be one of: critically_endangered, endangered,
   vulnerable, near_threatened, least_concern
 - Sighting dates must not be in the future
+
+At the end of every response, include a brief note listing which tools you used
+to gather the information and which MCP server owns them, formatted as:
+---
+🔧 Tools used: tool_name (server_name), tool_name (server_name)
+
+The MCP server names are:
+- wildlife-sightings: create_sighting, query_by_species, query_by_location, query_by_status
+- conservation-docs: list_documents, get_document, search_documents
+- weather-climate: get_current_weather, get_forecast, assess_fire_danger
 """
 
 # MCP server runtime ARNs (set by CDK as env vars)
@@ -174,6 +190,18 @@ def _build_mcp_clients() -> list[MCPClient]:
 def invoke(payload: dict[str, Any], context: object) -> dict[str, str]:
     """Handle an invocation from the API Lambda via AgentCore Runtime."""
     user_message = payload.get("prompt", "Hello!")
+    location = payload.get("location")
+
+    # Prepend location context so the agent knows where the user is
+    if location and isinstance(location, dict):
+        lat = location.get("lat")
+        lng = location.get("lng")
+        if lat is not None and lng is not None:
+            user_message = (
+                f"[User's current location: lat={lat}, lng={lng}. "
+                f"Use these coordinates when the user says 'my area', 'here', or 'near me'.]\n\n"
+                f"{user_message}"
+            )
 
     model = BedrockModel(
         model_id=PRIMARY_MODEL_ID,
@@ -189,7 +217,7 @@ def invoke(payload: dict[str, Any], context: object) -> dict[str, str]:
         tools=mcp_clients,  # type: ignore[arg-type]
     )
 
-    logger.info("Invoking agent with message: %s", user_message[:100])
+    logger.info("Invoking agent with message: %s", user_message)
 
     try:
         result = agent(user_message)

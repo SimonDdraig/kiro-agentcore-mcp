@@ -7,13 +7,17 @@ import hashlib
 import logging
 import math
 import os
-import sys
 import uuid
 from typing import Any
 
 import boto3
 from boto3.dynamodb.conditions import Attr, Key
 from mcp.server.fastmcp import FastMCP
+
+try:
+    from logging_config import setup_logging
+except ModuleNotFoundError:
+    from services.shared.logging_config import setup_logging
 
 # Inlined from models.sightings — the models/ package is not available
 # in the AgentCore runtime zip (each service is packaged independently).
@@ -27,13 +31,7 @@ GSI_NAME = "conservation_status-date-index"
 # ---------------------------------------------------------------------------
 mcp = FastMCP("wildlife-sightings", host="0.0.0.0", stateless_http=True)
 
-_handler = logging.StreamHandler(sys.stderr)
-_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-_root = logging.getLogger()
-_root.handlers.clear()
-_root.setLevel(logging.INFO)
-_root.addHandler(_handler)
-
+setup_logging()
 logger = logging.getLogger(__name__)
 logger.info("Wildlife sightings server starting")
 
