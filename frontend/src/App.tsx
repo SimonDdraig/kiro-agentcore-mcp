@@ -1,5 +1,5 @@
 // Copyright 2025 Bush Ranger AI Project. All rights reserved.
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import AppLayout from '@cloudscape-design/components/app-layout';
 import TopNavigation from '@cloudscape-design/components/top-navigation';
 import Spinner from '@cloudscape-design/components/spinner';
@@ -8,6 +8,39 @@ import './bush-theme.css';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { SignIn } from './auth/SignIn';
 import { ChatPage } from './chat/ChatPage';
+
+const BG_IMAGES = ['/outback-bg-1.png', '/outback-bg-2.png', '/outback-bg-3.png', '/outback-bg-4.png'];
+const BG_INTERVAL_MS = 60_000;
+
+function BackgroundRotator(): React.JSX.Element {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setIndex((i) => (i + 1) % BG_IMAGES.length), BG_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <>
+      {BG_IMAGES.map((src, i) => (
+        <div
+          key={src}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: -1,
+            backgroundImage: `url(${src})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center bottom',
+            backgroundRepeat: 'no-repeat',
+            opacity: i === index ? 1 : 0,
+            transition: 'opacity 2s ease-in-out',
+          }}
+        />
+      ))}
+    </>
+  );
+}
 
 function AppContent(): React.JSX.Element {
   const { isAuthenticated, isLoading, signOut } = useAuth();
@@ -49,6 +82,7 @@ function AppContent(): React.JSX.Element {
 export function App(): React.JSX.Element {
   return (
     <AuthProvider>
+      <BackgroundRotator />
       <AppContent />
     </AuthProvider>
   );

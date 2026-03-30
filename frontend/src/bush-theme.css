@@ -17,38 +17,22 @@ header[class*="awsui_header"] {
   background: linear-gradient(135deg, var(--bush-green) 0%, var(--bush-green-light) 100%) !important;
 }
 
-/* Body background — rich dot pattern with earthy + blue tones */
+/* Body background — handled by BackgroundRotator component */
 body {
-  background-color: #1a1a2e !important;
-  background-image:
-    /* Large concentric circle hints */
-    radial-gradient(circle at 15% 30%, rgba(204, 119, 34, 0.3) 0%, transparent 25%),
-    radial-gradient(circle at 75% 60%, rgba(192, 64, 0, 0.25) 0%, transparent 20%),
-    radial-gradient(circle at 50% 80%, rgba(0, 160, 200, 0.2) 0%, transparent 30%),
-    radial-gradient(circle at 85% 20%, rgba(0, 180, 220, 0.15) 0%, transparent 25%),
-    /* Medium dots — ochre */
-    radial-gradient(circle, var(--ochre) 2.5px, transparent 2.5px),
-    /* Medium dots — cyan offset */
-    radial-gradient(circle, rgba(0, 180, 220, 0.7) 2px, transparent 2px),
-    /* Small dots — white */
-    radial-gradient(circle, rgba(255, 255, 255, 0.5) 1.5px, transparent 1.5px),
-    /* Small dots — terracotta */
-    radial-gradient(circle, rgba(192, 64, 0, 0.5) 1.5px, transparent 1.5px),
-    /* Tiny dots — cyan scatter */
-    radial-gradient(circle, rgba(0, 200, 240, 0.4) 1px, transparent 1px),
-    /* Tiny dots — white scatter */
-    radial-gradient(circle, rgba(255, 255, 255, 0.3) 1px, transparent 1px);
-  background-size:
-    100% 100%, 100% 100%, 100% 100%, 100% 100%,
-    32px 32px, 28px 28px, 20px 20px, 24px 24px, 15px 15px, 18px 18px;
-  background-position:
-    0 0, 0 0, 0 0, 0 0,
-    0 0, 14px 8px, 6px 10px, 18px 4px, 3px 7px, 9px 13px;
+  background-color: #8B2500 !important;
+  min-height: 100vh;
+}
+
+/* Remove pseudo-elements */
+#root::before, #root::after {
+  display: none;
 }
 
 /* AppLayout main content area */
 main[class*="awsui_content"] {
   background: transparent !important;
+  position: relative;
+  z-index: 1;
 }
 
 /* Container headers — ochre accent */
@@ -91,14 +75,14 @@ a {
   color: var(--bush-green-light) !important;
 }
 
-/* Scrollbar — earthy tones */
+/* Scrollbar — outback tones */
 ::-webkit-scrollbar {
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #1a1a2e;
+  background: #5a1500;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--eucalyptus);
+  background: var(--ochre);
   border-radius: 4px;
 }
