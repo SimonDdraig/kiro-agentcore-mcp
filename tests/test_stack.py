@@ -42,8 +42,8 @@ class TestProperty10StackSynthesisesValidTemplate:
     """Validates: Property 10 — CDK stack synthesizes a valid CloudFormation template."""
 
     def test_dynamodb_table_exists(self, template: Template) -> None:
-        """Template contains a DynamoDB table resource."""
-        template.resource_count_is("AWS::DynamoDB::Table", 1)
+        """Template contains DynamoDB table resources (Sightings + Rangers)."""
+        template.resource_count_is("AWS::DynamoDB::Table", 2)
 
     def test_s3_buckets_exist(self, template: Template) -> None:
         """Template contains S3 bucket resources (docs + frontend + at least BucketDeployment staging)."""

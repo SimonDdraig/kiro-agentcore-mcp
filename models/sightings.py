@@ -21,3 +21,4 @@ class SightingRecord:
     conservation_status: str
     observer_notes: str
     sighting_id: str | None = None
+    ranger_id: str = ""

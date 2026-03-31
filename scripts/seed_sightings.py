@@ -17,9 +17,16 @@ from __future__ import annotations
 import hashlib
 import os
 import random
+import sys
 import uuid
+from pathlib import Path
 
 import boto3
+
+# Ensure project root is on sys.path so models/ is importable
+_project_root = str(Path(__file__).resolve().parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -88,6 +95,120 @@ LOCATIONS = [
     ("Jervis Bay, NSW", -35.0833, 150.7000),
     ("Cape Tribulation, QLD", -16.1000, 145.4667),
     ("Rottnest Island, WA", -32.0000, 115.5167),
+]
+
+# ---------------------------------------------------------------------------
+# Sample ranger profiles — realistic Australian rangers across regions
+# ---------------------------------------------------------------------------
+RANGERS: list[dict] = [
+    {
+        "ranger_id": "ranger-001",
+        "name": "Megan O'Sullivan",
+        "email": "megan.osullivan@bushrangers.gov.au",
+        "region": "Blue Mountains NP, NSW",
+        "phone": "+61 2 4780 1001",
+        "active": True,
+        "start_date": "2018-03-15",
+    },
+    {
+        "ranger_id": "ranger-002",
+        "name": "Jack Mundine",
+        "email": "jack.mundine@bushrangers.gov.au",
+        "region": "Kakadu NP, NT",
+        "phone": "+61 8 8938 2002",
+        "active": True,
+        "start_date": "2015-07-22",
+    },
+    {
+        "ranger_id": "ranger-003",
+        "name": "Sophie Nguyen",
+        "email": "sophie.nguyen@bushrangers.gov.au",
+        "region": "Daintree Rainforest, QLD",
+        "phone": "+61 7 4098 3003",
+        "active": True,
+        "start_date": "2020-01-10",
+    },
+    {
+        "ranger_id": "ranger-004",
+        "name": "Liam Patterson",
+        "email": "liam.patterson@bushrangers.gov.au",
+        "region": "Great Otway NP, VIC",
+        "phone": "+61 3 5237 4004",
+        "active": True,
+        "start_date": "2017-11-03",
+    },
+    {
+        "ranger_id": "ranger-005",
+        "name": "Tara Whitfield",
+        "email": "tara.whitfield@bushrangers.gov.au",
+        "region": "Cradle Mountain, TAS",
+        "phone": "+61 3 6492 5005",
+        "active": True,
+        "start_date": "2019-06-18",
+    },
+    {
+        "ranger_id": "ranger-006",
+        "name": "Daniel Koori",
+        "email": "daniel.koori@bushrangers.gov.au",
+        "region": "Kangaroo Island, SA",
+        "phone": "+61 8 8553 6006",
+        "active": True,
+        "start_date": "2016-09-01",
+    },
+    {
+        "ranger_id": "ranger-007",
+        "name": "Emma Hartley",
+        "email": "emma.hartley@bushrangers.gov.au",
+        "region": "Ningaloo Reef, WA",
+        "phone": "+61 8 9949 7007",
+        "active": True,
+        "start_date": "2021-02-14",
+    },
+    {
+        "ranger_id": "ranger-008",
+        "name": "Ryan Callahan",
+        "email": "ryan.callahan@bushrangers.gov.au",
+        "region": "Uluru-Kata Tjuta NP, NT",
+        "phone": "+61 8 8956 8008",
+        "active": False,
+        "start_date": "2014-04-30",
+    },
+    {
+        "ranger_id": "ranger-009",
+        "name": "Aisha Patel",
+        "email": "aisha.patel@bushrangers.gov.au",
+        "region": "Lamington NP, QLD",
+        "phone": "+61 7 5544 9009",
+        "active": True,
+        "start_date": "2022-08-05",
+    },
+    {
+        "ranger_id": "ranger-010",
+        "name": "Ben McAllister",
+        "email": "ben.mcallister@bushrangers.gov.au",
+        "region": "Wilsons Promontory, VIC",
+        "phone": "+61 3 5680 1010",
+        "active": True,
+        "start_date": "2013-12-20",
+    },
+    {
+        "ranger_id": "ranger-011",
+        "name": "Chloe Barrington",
+        "email": "chloe.barrington@bushrangers.gov.au",
+        "region": "Ku-ring-gai Chase NP, NSW",
+        "phone": "+61 2 9457 1011",
+        "active": True,
+        "start_date": "2020-10-12",
+    },
+    {
+        "ranger_id": "ranger-012",
+        "name": "Tom Birrani",
+        "email": "tom.birrani@bushrangers.gov.au",
+        "region": "Litchfield NP, NT",
+        "phone": "+61 8 8976 1012",
+        "active": False,
+        "start_date": "2011-05-08",
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -471,6 +592,7 @@ def _random_note(species_name: str) -> str:
 def _random_date() -> str:
     """Generate a random ISO date between 2024-01-01 and 2026-03-29."""
     from datetime import date, timedelta
+
     d = date(2024, 1, 1) + timedelta(days=random.randint(0, 818))
     return d.isoformat()
 
@@ -492,24 +614,43 @@ def generate_sightings() -> list[dict]:
         sighting_id = str(uuid.uuid4())
         sort_key = _make_sort_key(date_str, lat, lng)
 
-        records.append({
-            "species": species_name,
-            "date_location": sort_key,
-            "sighting_id": sighting_id,
-            "latitude": str(lat),
-            "longitude": str(lng),
-            "date": date_str,
-            "conservation_status": conservation_status,
-            "observer_notes": _random_note(species_name),
-        })
+        records.append(
+            {
+                "species": species_name,
+                "date_location": sort_key,
+                "sighting_id": sighting_id,
+                "latitude": str(lat),
+                "longitude": str(lng),
+                "date": date_str,
+                "conservation_status": conservation_status,
+                "observer_notes": _random_note(species_name),
+                "ranger_id": random.choice(RANGERS)["ranger_id"],
+            }
+        )
     return records
+
+
+def seed_rangers(dynamodb: boto3.resources.factory.dynamodb.ServiceResource) -> None:
+    """Write all ranger records to the BushRangers table using batch_writer."""
+    from models.rangers import TABLE_NAME as RANGERS_TABLE_NAME  # noqa: PLC0415
+
+    print(f"Seeding {len(RANGERS)} rangers into {RANGERS_TABLE_NAME} ({REGION})...")
+    table = dynamodb.Table(RANGERS_TABLE_NAME)
+    with table.batch_writer() as batch:
+        for ranger in RANGERS:
+            batch.put_item(Item=ranger)
+    print(f"Done — {len(RANGERS)} rangers seeded.")
 
 
 def main() -> None:
     """Seed the DynamoDB table."""
-    print(f"Seeding {TOTAL_RECORDS} sightings into {TABLE_NAME} ({REGION})...")
-
     dynamodb = boto3.resource("dynamodb", region_name=REGION)
+
+    # Seed rangers first
+    seed_rangers(dynamodb)
+
+    # Seed sightings
+    print(f"\nSeeding {TOTAL_RECORDS} sightings into {TABLE_NAME} ({REGION})...")
     table = dynamodb.Table(TABLE_NAME)
 
     records = generate_sightings()
@@ -534,7 +675,7 @@ def main() -> None:
         print(f"  {sp}: {count}")
     print(f"  ... and {len(species_counts) - 10} more")
 
-    print(f"\nConservation status distribution:")
+    print("\nConservation status distribution:")
     for status, count in sorted(status_counts.items(), key=lambda x: -x[1]):
         print(f"  {status}: {count}")
 

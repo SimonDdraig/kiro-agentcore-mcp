@@ -14,13 +14,18 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 # Ensure project root is on sys.path so models/ is importable
 _project_root = str(Path(__file__).resolve().parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
+from models.rangers import RangerRecord
+from scripts.seed_sightings import RANGERS, generate_sightings
 from services.mcp_servers.wildlife_sightings.server import (
+    _record_to_dict,
     create_sighting,
     query_by_location,
     query_by_species,
@@ -295,3 +300,284 @@ class TestQueryByStatus:
         assert result["count"] == 0
         assert result["sightings"] == []
         mock_table.query.assert_called_once()
+
+
+# ===================================================================
+# ranger_id behavior (Task 7.1)
+# ===================================================================
+
+
+class TestRangerIdBehavior:
+    """Tests for ranger_id field across create, query, and legacy paths."""
+
+    def test_create_sighting_with_ranger_id(self, mock_table: MagicMock) -> None:
+        """ranger_id is stored in DynamoDB and returned when provided."""
+        with patch(_PATCH_TARGET, return_value=mock_table):
+            result = create_sighting(**_valid_sighting_kwargs(), ranger_id="ranger-007")
+
+        assert result["ranger_id"] == "ranger-007"
+        # Verify the item written to DynamoDB contains ranger_id
+        put_item_kwargs = mock_table.put_item.call_args
+        assert put_item_kwargs.kwargs["Item"]["ranger_id"] == "ranger-007"
+
+    def test_create_sighting_without_ranger_id(self, mock_table: MagicMock) -> None:
+        """ranger_id defaults to empty string when not provided."""
+        with patch(_PATCH_TARGET, return_value=mock_table):
+            result = create_sighting(**_valid_sighting_kwargs())
+
+        assert result["ranger_id"] == ""
+        put_item_kwargs = mock_table.put_item.call_args
+        assert put_item_kwargs.kwargs["Item"]["ranger_id"] == ""
+
+    def test_record_to_dict_legacy_item(self) -> None:
+        """Legacy DynamoDB items without ranger_id get default empty string."""
+        legacy_item: dict[str, Any] = {
+            "sighting_id": "abc-123",
+            "species": "Koala",
+            "latitude": "-33.87",
+            "longitude": "151.21",
+            "date": "2025-01-01",
+            "conservation_status": "vulnerable",
+            "observer_notes": "Old record",
+            # no ranger_id key at all
+        }
+        result = _record_to_dict(legacy_item)
+        assert result["ranger_id"] == ""
+
+    def test_ranger_record_dataclass(self) -> None:
+        """RangerRecord has all required fields with correct types."""
+        ranger = RangerRecord(
+            ranger_id="ranger-001",
+            name="Test Ranger",
+            email="test@example.com",
+            region="Blue Mountains NP, NSW",
+            phone="+61 2 0000 0000",
+            active=True,
+            start_date="2020-01-01",
+        )
+        assert ranger.ranger_id == "ranger-001"
+        assert ranger.name == "Test Ranger"
+        assert ranger.email == "test@example.com"
+        assert ranger.region == "Blue Mountains NP, NSW"
+        assert ranger.phone == "+61 2 0000 0000"
+        assert ranger.active is True
+        assert ranger.start_date == "2020-01-01"
+
+    def test_sample_rangers_count(self) -> None:
+        """Seed script defines at least 10 sample rangers."""
+        assert len(RANGERS) >= 10
+
+
+# ===================================================================
+# Property 1: Ranger ID round-trip through create_sighting
+# ===================================================================
+
+# Shared strategies for property tests
+_species_st = st.text(min_size=1, max_size=50)
+_lat_st = st.floats(min_value=-44.0, max_value=-10.0, allow_nan=False, allow_infinity=False)
+_lng_st = st.floats(min_value=113.0, max_value=154.0, allow_nan=False, allow_infinity=False)
+_status_st = st.sampled_from(["critically_endangered", "endangered", "vulnerable", "near_threatened", "least_concern"])
+_date_st = st.dates().map(lambda d: d.isoformat())
+_notes_st = st.text(min_size=0, max_size=100)
+_ranger_id_st = st.text(min_size=1, max_size=50)
+
+
+@settings(max_examples=100, database=None)
+@given(
+    species=_species_st,
+    lat=_lat_st,
+    lng=_lng_st,
+    date=_date_st,
+    status=_status_st,
+    notes=_notes_st,
+    ranger_id=_ranger_id_st,
+)
+def test_property_ranger_id_round_trip_through_create_sighting(
+    species: str,
+    lat: float,
+    lng: float,
+    date: str,
+    status: str,
+    notes: str,
+    ranger_id: str,
+) -> None:
+    """Feature: ranger-id-field, Property 1: Ranger ID round-trip through create_sighting.
+
+    For any valid sighting parameters and any non-empty string ranger_id,
+    calling create_sighting stores the ranger_id in the DynamoDB put_item
+    call and returns it in the response dict.
+
+    **Validates: Requirements 2.2, 2.4**
+    """
+    mock_table = MagicMock()
+    with patch(_PATCH_TARGET, return_value=mock_table):
+        result = create_sighting(
+            species=species,
+            latitude=lat,
+            longitude=lng,
+            date=date,
+            conservation_status=status,
+            observer_notes=notes,
+            ranger_id=ranger_id,
+        )
+
+    # Assert put_item was called and the Item contains the ranger_id
+    mock_table.put_item.assert_called_once()
+    put_item_kwargs = mock_table.put_item.call_args
+    assert put_item_kwargs.kwargs["Item"]["ranger_id"] == ranger_id, (
+        f"Expected ranger_id '{ranger_id}' in DynamoDB item, got '{put_item_kwargs.kwargs['Item'].get('ranger_id')}'"
+    )
+
+    # Assert the response dict contains the same ranger_id
+    assert result["ranger_id"] == ranger_id, (
+        f"Expected ranger_id '{ranger_id}' in response, got '{result.get('ranger_id')}'"
+    )
+
+
+# ===================================================================
+# Property 2: Create response always contains ranger_id
+# ===================================================================
+
+# Strategy that optionally includes or excludes ranger_id
+_optional_ranger_id_st = st.one_of(st.just(""), st.text(min_size=1, max_size=50))
+
+
+@settings(max_examples=100, database=None)
+@given(
+    species=_species_st,
+    lat=_lat_st,
+    lng=_lng_st,
+    date=_date_st,
+    status=_status_st,
+    notes=_notes_st,
+    ranger_id=_optional_ranger_id_st,
+)
+def test_property_create_response_always_contains_ranger_id(
+    species: str,
+    lat: float,
+    lng: float,
+    date: str,
+    status: str,
+    notes: str,
+    ranger_id: str,
+) -> None:
+    """Feature: ranger-id-field, Property 2: Create response always contains ranger_id.
+
+    For any valid sighting parameters (with or without an explicit ranger_id),
+    the dict returned by create_sighting should always contain a ranger_id key
+    whose value is a string.
+
+    **Validates: Requirements 2.4, 2.3**
+    """
+    mock_table = MagicMock()
+    with patch(_PATCH_TARGET, return_value=mock_table):
+        result = create_sighting(
+            species=species,
+            latitude=lat,
+            longitude=lng,
+            date=date,
+            conservation_status=status,
+            observer_notes=notes,
+            ranger_id=ranger_id,
+        )
+
+    # Assert the response always contains ranger_id as a string
+    assert "ranger_id" in result, "Response dict must always contain 'ranger_id' key"
+    assert isinstance(result["ranger_id"], str), (
+        f"Expected ranger_id to be str, got {type(result['ranger_id']).__name__}"
+    )
+
+
+# ===================================================================
+# Property 3: Record-to-dict always includes ranger_id
+# ===================================================================
+
+
+@settings(max_examples=100, database=None)
+@given(
+    sighting_id=st.text(min_size=1, max_size=50),
+    species=_species_st,
+    lat=_lat_st,
+    lng=_lng_st,
+    date=_date_st,
+    status=_status_st,
+    notes=_notes_st,
+    include_ranger=st.booleans(),
+    ranger_id=_optional_ranger_id_st,
+)
+def test_property_record_to_dict_always_includes_ranger_id(
+    sighting_id: str,
+    species: str,
+    lat: float,
+    lng: float,
+    date: str,
+    status: str,
+    notes: str,
+    include_ranger: bool,
+    ranger_id: str,
+) -> None:
+    """Feature: ranger-id-field, Property 3: Record-to-dict always includes ranger_id.
+
+    For any DynamoDB item dict (whether or not it contains a ranger_id attribute),
+    converting it via _record_to_dict should produce an output dict that contains
+    a ranger_id key with a string value. If the input item has a ranger_id, the
+    output should match it; if the input item lacks ranger_id, the output should
+    default to "".
+
+    **Validates: Requirements 3.1, 3.2**
+    """
+    item: dict[str, Any] = {
+        "sighting_id": sighting_id,
+        "species": species,
+        "latitude": str(lat),
+        "longitude": str(lng),
+        "date": date,
+        "conservation_status": status,
+        "observer_notes": notes,
+    }
+
+    if include_ranger:
+        item["ranger_id"] = ranger_id
+
+    result = _record_to_dict(item)
+
+    # Output must always contain ranger_id as a string
+    assert "ranger_id" in result, "Output dict must always contain 'ranger_id' key"
+    assert isinstance(result["ranger_id"], str), (
+        f"Expected ranger_id to be str, got {type(result['ranger_id']).__name__}"
+    )
+
+    # If input had ranger_id, output must match; otherwise default to ""
+    if include_ranger:
+        assert result["ranger_id"] == ranger_id, (
+            f"Expected ranger_id '{ranger_id}' in output, got '{result['ranger_id']}'"
+        )
+    else:
+        assert result["ranger_id"] == "", f"Expected empty string for missing ranger_id, got '{result['ranger_id']}'"
+
+
+# ===================================================================
+# Property 4: Seed sighting ranger_ids are from the valid ranger set
+# ===================================================================
+
+# Pre-generate the sightings list once (deterministic after seed script logic)
+_SEED_SIGHTINGS = generate_sightings()
+_VALID_RANGER_IDS = {r["ranger_id"] for r in RANGERS}
+
+
+@settings(max_examples=100, database=None)
+@given(index=st.integers(min_value=0, max_value=999))
+def test_property_seed_sighting_ranger_ids_from_valid_set(index: int) -> None:
+    """Feature: ranger-id-field, Property 4: Seed sighting ranger_ids are from the valid ranger set.
+
+    For any sighting record generated by the seed script, the ranger_id value
+    should be a member of the set of ranger_id values defined in the sample
+    rangers list.
+
+    **Validates: Requirements 5.3, 5.4**
+    """
+    sighting = _SEED_SIGHTINGS[index]
+    assert sighting["ranger_id"] in _VALID_RANGER_IDS, (
+        f"Sighting at index {index} has ranger_id '{sighting['ranger_id']}' "
+        f"which is not in the valid ranger set: {_VALID_RANGER_IDS}"
+    )

@@ -63,6 +63,7 @@ def _record_to_dict(item: dict[str, Any]) -> dict[str, Any]:
         "date": item.get("date", ""),
         "conservation_status": item.get("conservation_status", ""),
         "observer_notes": item.get("observer_notes", ""),
+        "ranger_id": item.get("ranger_id", ""),
     }
 
 
@@ -127,6 +128,7 @@ def create_sighting(
     date: str | None = None,
     conservation_status: str = "least_concern",
     observer_notes: str = "",
+    ranger_id: str = "",
 ) -> dict[str, Any]:
     """Record a new wildlife sighting.
 
@@ -138,6 +140,7 @@ def create_sighting(
         conservation_status: IUCN status — one of critically_endangered,
             endangered, vulnerable, near_threatened, least_concern.
         observer_notes: Free-text notes from the observer.
+        ranger_id: Optional ranger identifier for attribution.
 
     Returns:
         The created sighting record with a generated unique ID, or a
@@ -166,6 +169,7 @@ def create_sighting(
         "date": date,
         "conservation_status": conservation_status,
         "observer_notes": observer_notes,
+        "ranger_id": ranger_id,
     }
 
     table = _get_table()
@@ -179,6 +183,7 @@ def create_sighting(
         "date": date,
         "conservation_status": conservation_status,
         "observer_notes": observer_notes,
+        "ranger_id": ranger_id,
     }
 
 

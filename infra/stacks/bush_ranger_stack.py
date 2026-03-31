@@ -55,6 +55,8 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from models.documents import DOCS_BUCKET_PREFIX
+from models.rangers import PARTITION_KEY as RANGERS_PARTITION_KEY
+from models.rangers import TABLE_NAME as RANGERS_TABLE_NAME
 from models.sightings import GSI_NAME, PARTITION_KEY, SORT_KEY, TABLE_NAME
 
 
@@ -69,6 +71,11 @@ class BushRangerStack(Stack):
         # 7.2  DynamoDB Table
         # ----------------------------------------------------------------
         self.sightings_table = self._create_dynamodb_table()
+
+        # ----------------------------------------------------------------
+        # DynamoDB Rangers Table
+        # ----------------------------------------------------------------
+        self.rangers_table = self._create_rangers_table()
 
         # ----------------------------------------------------------------
         # 7.3  S3 Docs Bucket + BucketDeployment
@@ -185,6 +192,23 @@ class BushRangerStack(Stack):
         )
 
         return table
+
+    # ------------------------------------------------------------------
+    # DynamoDB Rangers Table
+    # ------------------------------------------------------------------
+    def _create_rangers_table(self) -> dynamodb.Table:
+        """Create the BushRangers DynamoDB table for ranger profiles."""
+        return dynamodb.Table(
+            self,
+            "RangersTable",
+            table_name=RANGERS_TABLE_NAME,
+            partition_key=dynamodb.Attribute(
+                name=RANGERS_PARTITION_KEY,
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
 
     # ------------------------------------------------------------------
     # 7.3  S3 Docs Bucket + BucketDeployment

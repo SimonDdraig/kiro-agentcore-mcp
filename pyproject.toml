@@ -21,6 +21,7 @@ extend-select = ["D100", "D101", "D102", "D103"]
 "infra/stacks/bush_ranger_stack.py" = ["E402"]
 "tests/**/*.py" = ["S101", "D102", "D103", "E402"]
 "SampleAgent/**/*.py" = ["D100", "D103", "D104", "D200", "D205", "D415", "E501", "F841", "S110"]
+"scripts/seed_sightings.py" = ["S311", "E501"]  # seed script uses random for test data, has long notes
 "services/mcp_servers/*/server.py" = ["S104"]  # 0.0.0.0 binding required by AgentCore
 "services/agent/handler.py" = ["S110"]  # best-effort MCP client cleanup
 
