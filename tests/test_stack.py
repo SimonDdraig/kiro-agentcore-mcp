@@ -650,3 +650,95 @@ class TestProperty4StackOutputs:
                 "Description": Match.string_like_regexp(".*Data Source.*"),
             },
         )
+
+
+# ------------------------------------------------------------------
+# Feature: agentcore-short-term-memory — CDK Memory Resource Provisioning
+# Validates: Requirements 5.1, 5.2, 5.3, 6.1, 6.2, 6.3
+# ------------------------------------------------------------------
+class TestMemoryResourceProvisioning:
+    """Validates CDK memory resource provisioning for AgentCore short-term memory."""
+
+    def test_custom_resource_for_memory_creation_exists(self, template: Template) -> None:
+        """Synthesized template contains a Lambda-backed custom resource for memory creation.
+
+        Validates: Requirement 5.1
+        """
+        # The Lambda-backed custom resource uses AWS::CloudFormation::CustomResource
+        # with a ServiceToken pointing to the handler Lambda.
+        template.has_resource_properties(
+            "AWS::CloudFormation::CustomResource",
+            {
+                "ServiceToken": Match.any_value(),
+            },
+        )
+        # Also verify the backing Lambda exists with the memory handler code
+        template.has_resource_properties(
+            "AWS::Lambda::Function",
+            {
+                "Runtime": "python3.12",
+                "Handler": "index.handler",
+            },
+        )
+
+    def test_memory_id_env_var_wired_to_agent_runtime(self, template: Template) -> None:
+        """MEMORY_ID environment variable is set on the agent runtime.
+
+        Validates: Requirement 5.2
+        """
+        template.has_resource_properties(
+            "AWS::BedrockAgentCore::Runtime",
+            {
+                "AgentRuntimeName": "bush_ranger_agent",
+                "EnvironmentVariables": Match.object_like(
+                    {
+                        "MEMORY_ID": Match.any_value(),
+                    }
+                ),
+            },
+        )
+
+    def test_iam_policy_contains_invoke_and_retrieve_memory(self, template: Template) -> None:
+        """IAM policy contains InvokeMemory and RetrieveMemory actions scoped to memory ARN.
+
+        Validates: Requirements 6.1, 6.2, 6.3
+        """
+        # The memory resource ARN is built dynamically via Fn::Join with the
+        # custom resource response field, so we search the raw template for
+        # the policy statement containing the expected actions and verify the
+        # resource ARN references the memory path.
+        all_policies = template.find_resources("AWS::IAM::Policy")
+        found = False
+        for _logical_id, resource in all_policies.items():
+            statements = resource.get("Properties", {}).get("PolicyDocument", {}).get("Statement", [])
+            for stmt in statements:
+                action = stmt.get("Action", [])
+                if isinstance(action, list) and set(action) == {
+                    "bedrock-agentcore:InvokeMemory",
+                    "bedrock-agentcore:RetrieveMemory",
+                }:
+                    # Verify the resource is scoped to a memory ARN (contains "memory/")
+                    res = stmt.get("Resource", "")
+                    # Resource may be a string or a Fn::Join intrinsic
+                    if isinstance(res, str) and "memory/" in res:
+                        found = True
+                    elif isinstance(res, dict):
+                        # Fn::Join produces {"Fn::Join": ["", [parts...]]}
+                        join_parts = res.get("Fn::Join", [None, []])[1]
+                        if any("memory/" in str(p) for p in join_parts):
+                            found = True
+                    break
+        assert found, "Expected IAM policy with InvokeMemory and RetrieveMemory scoped to memory ARN"
+
+    def test_memory_id_stack_output_exists(self, template: Template) -> None:
+        """Stack output for MemoryId exists with correct export name.
+
+        Validates: Requirement 5.3
+        """
+        template.has_output(
+            "MemoryId",
+            {
+                "Description": Match.string_like_regexp(".*[Mm]emory.*"),
+                "Export": {"Name": "BushRangerMemoryId"},
+            },
+        )

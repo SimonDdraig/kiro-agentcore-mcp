@@ -1,4 +1,4 @@
-bedrock-agentcore
+bedrock-agentcore[strands]
 strands-agents
 strands-agents-tools
 mcp>=1.19.0

@@ -11,10 +11,13 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import uuid
 from typing import Any
 from urllib.parse import quote
 
 import httpx
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
+from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from mcp.client.streamable_http import streamablehttp_client
 from strands import Agent
@@ -40,6 +43,7 @@ app = BedrockAgentCoreApp()
 PRIMARY_MODEL_ID = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
 TEMPERATURE = 0.3
 REGION = os.environ.get("AWS_REGION", "us-east-1")
+MEMORY_ID = os.environ.get("MEMORY_ID", "")
 
 SYSTEM_PROMPT = """\
 You are Bush Ranger AI, an Australian park ranger assistant specializing in
@@ -51,6 +55,16 @@ You help park rangers across Australia by:
   and emergency procedures
 - Checking current weather conditions, forecasts, and fire danger assessments
   for Australian locations
+
+Location context rules:
+- The user's current GPS coordinates may be included with each request. Treat
+  this as a fallback location only.
+- If the user has mentioned a specific location or region in the current
+  conversation (e.g. "the Pilbara", "Kakadu", "Blue Mountains"), always use
+  that location as context for follow-up questions, even if the follow-up
+  does not explicitly name the location again.
+- Only fall back to the user's GPS coordinates when no location has been
+  mentioned or discussed in the conversation.
 
 You are knowledgeable, helpful, and safety-conscious. When fire danger is elevated,
 always prioritise ranger safety and include emergency contact information (000).
@@ -65,6 +79,46 @@ Data quality rules:
 - Conservation status must be one of: critically_endangered, endangered,
   vulnerable, near_threatened, least_concern
 - Sighting dates must not be in the future
+
+Sighting entry rules:
+- If the user does not provide a ranger_id when creating a sighting, you MUST
+  ask them for their ranger ID before calling create_sighting. Do not guess or
+  omit it.
+- If the user refers to dates using relative terms like "today", "yesterday",
+  "tomorrow", "last Monday", "two days ago", etc., you MUST resolve them to
+  the actual calendar date (YYYY-MM-DD format) before calling any tool. Use
+  the current date from the conversation context to calculate the correct date.
+
+"What's nearby?" mode:
+When the user asks "what's nearby?", "what's around me?", "anything happening
+near me?", or similar proximity questions:
+1. Use their GPS coordinates (or the most recently discussed location) to call
+   query_by_location with a 25km radius to find recent wildlife sightings
+2. Call get_current_weather for the location to get current conditions
+3. Call assess_fire_danger for the location
+4. Search conservation docs for any alerts relevant to the area
+Present the results as a compact ranger dashboard:
+- 🦘 Recent sightings (species, distance, date) — highlight any threatened species
+- 🌤️ Current weather summary
+- 🔥 Fire danger level with safety advice if elevated
+- 📋 Any relevant conservation alerts
+Keep it scannable and actionable.
+
+Morning briefing mode:
+When the user says "morning briefing", "daily briefing", "give me my briefing",
+or similar:
+1. Call get_forecast for the user's GPS location (3-day forecast)
+2. Call assess_fire_danger for the location
+3. Call query_by_location with a 50km radius to find sightings from the last 7 days
+4. Search conservation docs for current management alerts or seasonal guidance
+Present the results as a structured morning briefing:
+- ☀️ Today's weather and 3-day outlook
+- 🔥 Fire danger assessment with safety actions if elevated
+- 🦘 Recent sightings summary in patrol area (last 7 days) — call out any
+  threatened species or unusual activity
+- 📋 Active conservation notes or seasonal reminders
+End with a suggested focus for the day based on the data (e.g. "Quiet week for
+sightings in the northern sector — might be worth a patrol up there").
 
 At the end of every response, include a brief note listing which tools you used
 to gather the information and which MCP server owns them, formatted as:
@@ -141,6 +195,32 @@ def _get_cognito_access_token() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Helper: build memory session manager
+# ---------------------------------------------------------------------------
+
+
+def _build_session_manager(session_id: str, actor_id: str | None) -> AgentCoreMemorySessionManager | None:
+    """Create an AgentCoreMemorySessionManager for the given session.
+
+    Returns None (stateless fallback) when MEMORY_ID is not configured
+    or when construction fails for any reason.
+    """
+    if not MEMORY_ID:
+        logger.warning("MEMORY_ID not configured, running without memory")
+        return None
+    try:
+        config = AgentCoreMemoryConfig(
+            memory_id=MEMORY_ID,
+            session_id=session_id,
+            actor_id=actor_id or "anonymous",
+        )
+        return AgentCoreMemorySessionManager(agentcore_memory_config=config)
+    except Exception:
+        logger.exception("Failed to initialize memory session manager")
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Helper: build MCP clients for AgentCore-hosted MCP servers
 # ---------------------------------------------------------------------------
 
@@ -191,6 +271,10 @@ def invoke(payload: dict[str, Any], context: object) -> dict[str, str]:
     """Handle an invocation from the API Lambda via AgentCore Runtime."""
     user_message = payload.get("prompt", "Hello!")
     location = payload.get("location")
+    session_id = payload.get("session_id", str(uuid.uuid4()))
+    actor_id = payload.get("actor_id")
+
+    session_manager = _build_session_manager(session_id, actor_id)
 
     # Prepend location context so the agent knows where the user is
     if location and isinstance(location, dict):
@@ -215,6 +299,7 @@ def invoke(payload: dict[str, Any], context: object) -> dict[str, str]:
         model=model,
         system_prompt=SYSTEM_PROMPT,
         tools=mcp_clients,  # type: ignore[arg-type]
+        session_manager=session_manager,
     )
 
     logger.info("Invoking agent with message: %s", user_message)

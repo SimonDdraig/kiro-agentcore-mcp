@@ -83,6 +83,8 @@ _ALLOWED_ACTIONS: dict[str, set[str]] = {
         "xray:GetSamplingRules",
         "xray:GetSamplingTargets",
         "cloudwatch:PutMetricData",
+        "bedrock-agentcore:InvokeMemory",
+        "bedrock-agentcore:RetrieveMemory",
     },
     "kb": {
         "s3:GetObject",

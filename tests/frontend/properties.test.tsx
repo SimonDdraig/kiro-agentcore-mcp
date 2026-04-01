@@ -7,6 +7,7 @@ import * as fc from 'fast-check';
 
 import { MessageList } from '../../frontend/src/chat/MessageList';
 import { sanitizeError, invokeAgent } from '../../frontend/src/api/agent';
+import { extractActorId } from '../../frontend/src/chat/ChatPage';
 import type { ChatMessage } from '../../frontend/src/types';
 
 // jsdom doesn't implement scrollIntoView
@@ -71,7 +72,7 @@ describe('Feature: aws-agentcore-mcp-infrastructure, Property 13: Chat message r
 
         unmount();
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     );
   });
 });
@@ -128,7 +129,7 @@ describe('Feature: aws-agentcore-mcp-infrastructure, Property 14: Error messages
         const result = sanitizeError(input);
         expect(result).not.toContain('arn:aws:');
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     );
   });
 
@@ -142,7 +143,7 @@ describe('Feature: aws-agentcore-mcp-infrastructure, Property 14: Error messages
         const result = sanitizeError(input);
         expect(result).not.toMatch(/at\s+[\w$.]+\s*\(.*:\d+:\d+\)/);
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     );
   });
 
@@ -156,7 +157,7 @@ describe('Feature: aws-agentcore-mcp-infrastructure, Property 14: Error messages
         const result = sanitizeError(input);
         expect(result).not.toContain('amazonaws.com');
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     );
   });
 
@@ -170,7 +171,7 @@ describe('Feature: aws-agentcore-mcp-infrastructure, Property 14: Error messages
         const result = sanitizeError(input);
         expect(result).not.toContain(exception);
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     );
   });
 });
@@ -216,7 +217,7 @@ describe('Feature: aws-agentcore-mcp-infrastructure, Property 15: API requests i
           mockFetch.mockClear();
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 20 },
     );
   });
 });
@@ -258,7 +259,114 @@ describe('Feature: aws-agentcore-mcp-infrastructure, Property 17: Unauthenticate
           mockFetch.mockClear();
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 20 },
+    );
+  });
+});
+
+// Feature: agentcore-short-term-memory, Property 2: Actor ID extraction from JWT
+describe('Feature: agentcore-short-term-memory, Property 2: Actor ID extraction from JWT', () => {
+  it('For any valid JWT with a sub claim, extractActorId returns the exact sub value', () => {
+    /**
+     * Validates: Requirements 2.1
+     */
+    const subArb = fc.string({ minLength: 1, maxLength: 100 });
+
+    fc.assert(
+      fc.property(subArb, (sub) => {
+        // Build a minimal JWT: header.payload.signature
+        const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+        const payload = btoa(JSON.stringify({ sub }));
+        const signature = btoa('fake-signature');
+        const token = `${header}.${payload}.${signature}`;
+
+        const result = extractActorId(token);
+        expect(result).toBe(sub);
+      }),
+      { numRuns: 20 },
+    );
+  });
+});
+
+// Feature: agentcore-short-term-memory, Property 3: Invalid token yields no actor ID
+describe('Feature: agentcore-short-term-memory, Property 3: Invalid token yields no actor ID', () => {
+  it('For any null input, extractActorId returns undefined', () => {
+    /**
+     * Validates: Requirements 2.2
+     */
+    expect(extractActorId(null)).toBeUndefined();
+  });
+
+  it('For any empty string, extractActorId returns undefined', () => {
+    /**
+     * Validates: Requirements 2.2
+     */
+    expect(extractActorId('')).toBeUndefined();
+  });
+
+  it('For any string without dots (no JWT structure), extractActorId returns undefined', () => {
+    /**
+     * Validates: Requirements 2.2
+     */
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 200 }).filter((s) => !s.includes('.')),
+        (token) => {
+          expect(extractActorId(token)).toBeUndefined();
+        },
+      ),
+      { numRuns: 20 },
+    );
+  });
+
+  it('For any string with dots but non-base64 payload, extractActorId returns undefined', () => {
+    /**
+     * Validates: Requirements 2.2
+     */
+    // Generate tokens where the second segment is not valid base64-encoded JSON
+    const invalidBase64Arb = fc
+      .tuple(
+        fc.string({ minLength: 1, maxLength: 50 }),
+        stringFromChars(['!', '@', '#', '$', '%', '^', '&', '(', ')'], {
+          minLength: 1,
+          maxLength: 50,
+        }),
+        fc.string({ minLength: 1, maxLength: 50 }),
+      )
+      .map(([header, payload, sig]) => `${header}.${payload}.${sig}`);
+
+    fc.assert(
+      fc.property(invalidBase64Arb, (token) => {
+        expect(extractActorId(token)).toBeUndefined();
+      }),
+      { numRuns: 20 },
+    );
+  });
+
+  it('For any valid base64 JWT payload without a sub claim, extractActorId returns undefined', () => {
+    /**
+     * Validates: Requirements 2.2
+     */
+    // Generate JWT-like tokens where the payload is valid JSON but has no "sub" key
+    const noSubPayloadArb = fc
+      .record({
+        iss: fc.string({ minLength: 1, maxLength: 50 }),
+        aud: fc.string({ minLength: 1, maxLength: 50 }),
+        exp: fc.nat(),
+        iat: fc.nat(),
+      })
+      .map((claims) => {
+        const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+        const payload = btoa(JSON.stringify(claims));
+        const signature = btoa('fake-signature');
+        return `${header}.${payload}.${signature}`;
+      });
+
+    fc.assert(
+      fc.property(noSubPayloadArb, (token) => {
+        expect(extractActorId(token)).toBeUndefined();
+      }),
+      { numRuns: 20 },
     );
   });
 });

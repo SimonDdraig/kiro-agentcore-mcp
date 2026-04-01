@@ -33,7 +33,11 @@ def handler(event: dict[str, object], context: object) -> dict[str, object]:
             return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": "Missing 'message' field"})}
 
         session_id = body.get("sessionId") or str(uuid.uuid4())
+        actor_id = body.get("actorId")
         agent_payload: dict[str, object] = {"prompt": message}
+        agent_payload["session_id"] = session_id
+        if actor_id:
+            agent_payload["actor_id"] = actor_id
         location = body.get("location")
         if location:
             agent_payload["location"] = location

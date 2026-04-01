@@ -144,6 +144,11 @@ class BushRangerStack(Stack):
         self.iam_roles = self._create_iam_roles()
 
         # ----------------------------------------------------------------
+        # AgentCore Memory Resource
+        # ----------------------------------------------------------------
+        self.memory_resource = self._create_memory_resource()
+
+        # ----------------------------------------------------------------
         # 7.9  AgentCore Runtimes
         # ----------------------------------------------------------------
         self.agent_runtime, self.mcp_server_runtimes = self._create_agentcore_runtimes()
@@ -881,6 +886,95 @@ class BushRangerStack(Stack):
         return roles
 
     # ------------------------------------------------------------------
+    # AgentCore Memory Resource
+    # ------------------------------------------------------------------
+    def _create_memory_resource(self) -> cdk.CustomResource:
+        """Create an AgentCore Memory resource using a Lambda-backed Custom Resource.
+
+        CDK L2 constructs don't exist yet for AgentCore Memory, and the JS SDK
+        does not include a BedrockAgentCore client. We use a Python Lambda with
+        boto3 to call the bedrock-agentcore API directly.
+        """
+        handler_code = """
+import json
+import logging
+import urllib.request
+
+import boto3
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+client = boto3.client("bedrock-agentcore-control")
+
+
+def send_cfn_response(event, context, status, data=None, reason=None):
+    body = json.dumps({
+        "Status": status,
+        "Reason": reason or "",
+        "PhysicalResourceId": (data or {}).get("memoryId", event.get("PhysicalResourceId", context.log_stream_name)),
+        "StackId": event["StackId"],
+        "RequestId": event["RequestId"],
+        "LogicalResourceId": event["LogicalResourceId"],
+        "Data": data or {},
+    }).encode("utf-8")
+    req = urllib.request.Request(event["ResponseURL"], data=body, method="PUT")
+    req.add_header("Content-Type", "")
+    req.add_header("Content-Length", str(len(body)))
+    urllib.request.urlopen(req)
+
+
+def handler(event, context):
+    try:
+        rt = event["RequestType"]
+        if rt == "Create":
+            resp = client.create_memory(
+                name="bush_ranger_short_term_memory",
+                description="Short-term conversational memory for Bush Ranger AI",
+                eventExpiryDuration=7,
+                memoryStrategies=[],
+            )
+            memory_id = resp["memory"]["id"]
+            send_cfn_response(event, context, "SUCCESS", {"memoryId": memory_id})
+        elif rt == "Delete":
+            memory_id = event.get("PhysicalResourceId", "")
+            if memory_id:
+                try:
+                    client.delete_memory(memoryId=memory_id)
+                except Exception:
+                    logger.exception("delete_memory failed (best-effort)")
+            send_cfn_response(event, context, "SUCCESS")
+        else:
+            send_cfn_response(event, context, "SUCCESS", {"memoryId": event.get("PhysicalResourceId", "")})
+    except Exception as e:
+        logger.exception("Custom resource handler failed")
+        send_cfn_response(event, context, "FAILED", reason=str(e))
+"""
+        fn = _lambda.Function(
+            self,
+            "MemoryCustomResourceHandler",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="index.handler",
+            code=_lambda.Code.from_inline(handler_code),
+            timeout=Duration.seconds(60),
+        )
+        fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock-agentcore:CreateMemory",
+                    "bedrock-agentcore:DeleteMemory",
+                ],
+                resources=["*"],
+            )
+        )
+
+        return cdk.CustomResource(
+            self,
+            "AgentCoreMemoryResource",
+            service_token=fn.function_arn,
+        )
+
+    # ------------------------------------------------------------------
     # 7.9  AgentCore Runtimes
     # ------------------------------------------------------------------
     def _create_agentcore_runtimes(
@@ -1032,6 +1126,20 @@ class BushRangerStack(Stack):
             )
         )
 
+        # Grant agent role permission to use AgentCore Memory
+        memory_id = self.memory_resource.get_att_string("memoryId")
+        self.iam_roles["agent"].add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock-agentcore:InvokeMemory",
+                    "bedrock-agentcore:RetrieveMemory",
+                ],
+                resources=[
+                    f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:memory/{memory_id}",
+                ],
+            )
+        )
+
         # Ensure agent role IAM policy is created before runtime validates ECR
         agent_role_policy = self.iam_roles["agent"].node.try_find_child("DefaultPolicy")
 
@@ -1059,6 +1167,7 @@ class BushRangerStack(Stack):
                     "COGNITO_M2M_CLIENT_ID": self.m2m_client.user_pool_client_id,
                     "COGNITO_M2M_CLIENT_SECRET": self.m2m_client.user_pool_client_secret.unsafe_unwrap(),
                     "COGNITO_M2M_SCOPE": "mcp/invoke",
+                    "MEMORY_ID": self.memory_resource.get_att_string("memoryId"),
                 },
                 "AgentRuntimeArtifact": {
                     "ContainerConfiguration": {
@@ -1222,4 +1331,12 @@ class BushRangerStack(Stack):
             value=self.data_source.get_att("DataSourceId").to_string(),
             description="Bedrock Knowledge Base Data Source ID",
             export_name="BushRangerDataSourceId",
+        )
+
+        CfnOutput(
+            self,
+            "MemoryId",
+            value=self.memory_resource.get_att_string("memoryId"),
+            description="AgentCore Memory resource identifier",
+            export_name="BushRangerMemoryId",
         )

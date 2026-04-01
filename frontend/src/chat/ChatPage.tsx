@@ -1,5 +1,5 @@
 // Copyright 2025 Bush Ranger AI Project. All rights reserved.
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import Container from '@cloudscape-design/components/container';
 import Header from '@cloudscape-design/components/header';
 import SpaceBetween from '@cloudscape-design/components/space-between';
@@ -20,14 +20,40 @@ interface QueryRecord {
   timestamp: Date;
 }
 
+/**
+ * Extract the actor ID (sub claim) from a JWT access token.
+ * Returns undefined if the token is null, malformed, or missing the sub claim.
+ */
+export function extractActorId(token: string | null): string | undefined {
+  if (!token) return undefined;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.sub;
+  } catch {
+    return undefined;
+  }
+}
+
 export function ChatPage(): React.JSX.Element {
-  const { accessToken, refreshSession } = useAuth();
+  const { accessToken, refreshSession, isAuthenticated } = useAuth();
+  const [sessionId, setSessionId] = useState<string>(() => crypto.randomUUID());
+  const prevAuthRef = useRef(isAuthenticated);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [currentAnswer, setCurrentAnswer] = useState<string>('');
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
   const [history, setHistory] = useState<QueryRecord[]>([]);
+
+  useEffect(() => {
+    const wasAuthenticated = prevAuthRef.current;
+    prevAuthRef.current = isAuthenticated;
+
+    // Reset sessionId on sign-out (was authenticated, now not) or sign-in (was not, now is)
+    if (wasAuthenticated !== isAuthenticated) {
+      setSessionId(crypto.randomUUID());
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
@@ -47,12 +73,14 @@ export function ChatPage(): React.JSX.Element {
 
       try {
         let token = accessToken;
-        let response = await invokeAgent(content.trim(), token, userLocation);
+        const actorId = extractActorId(token);
+        let response = await invokeAgent(content.trim(), token, userLocation, sessionId, actorId);
 
         if (response.status === 401) {
           token = await refreshSession();
           if (!token) return;
-          response = await invokeAgent(content.trim(), token, userLocation);
+          const refreshedActorId = extractActorId(token);
+          response = await invokeAgent(content.trim(), token, userLocation, sessionId, refreshedActorId);
         }
 
         if (!response.ok) {
@@ -80,7 +108,7 @@ export function ChatPage(): React.JSX.Element {
         setIsLoading(false);
       }
     },
-    [accessToken, isLoading, refreshSession, userLocation],
+    [accessToken, isLoading, refreshSession, sessionId, userLocation],
   );
 
   return (
@@ -107,8 +135,13 @@ export function ChatPage(): React.JSX.Element {
           }
         >
           {isLoading && (
-            <Box padding="l" textAlign="center">
-              <StatusIndicator type="loading">Bush Ranger AI is thinking...</StatusIndicator>
+            <Box padding="l">
+              <Box variant="p" color="text-body-secondary" margin={{ bottom: 's' }}>
+                <strong>You:</strong> {currentQuestion}
+              </Box>
+              <Box textAlign="center">
+                <StatusIndicator type="loading">Bush Ranger AI is thinking...</StatusIndicator>
+              </Box>
             </Box>
           )}
           {!isLoading && !currentAnswer && (

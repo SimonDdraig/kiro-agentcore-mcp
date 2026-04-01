@@ -37,6 +37,8 @@ export async function invokeAgent(
   message: string,
   accessToken: string | null,
   location?: { lat: number; lng: number } | null,
+  sessionId?: string,
+  actorId?: string,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -44,6 +46,8 @@ export async function invokeAgent(
   try {
     const body: Record<string, unknown> = { message };
     if (location) body.location = location;
+    if (sessionId) body.sessionId = sessionId;
+    if (actorId) body.actorId = actorId;
 
     const response = await fetch(`${API_ENDPOINT}/invoke`, {
       method: 'POST',
