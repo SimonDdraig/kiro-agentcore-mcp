@@ -13,39 +13,44 @@
 }
 
 /* Top navigation bar — deep bush green */
-header[class*="awsui_header"] {
-  background: linear-gradient(135deg, var(--bush-green) 0%, var(--bush-green-light) 100%) !important;
+header[class*='awsui_header'] {
+  background: linear-gradient(
+    135deg,
+    var(--bush-green) 0%,
+    var(--bush-green-light) 100%
+  ) !important;
 }
 
 /* Body background — handled by BackgroundRotator component */
 body {
-  background-color: #8B2500 !important;
+  background-color: #8b2500 !important;
   min-height: 100vh;
 }
 
 /* Remove pseudo-elements */
-#root::before, #root::after {
+#root::before,
+#root::after {
   display: none;
 }
 
 /* AppLayout main content area */
-main[class*="awsui_content"] {
+main[class*='awsui_content'] {
   background: transparent !important;
   position: relative;
   z-index: 1;
 }
 
 /* Container headers — ochre accent */
-h2[class*="awsui_heading-text"] {
+h2[class*='awsui_heading-text'] {
   color: var(--bark-brown) !important;
 }
 
 /* Primary buttons — bush green */
-button[class*="awsui_variant-primary"] {
+button[class*='awsui_variant-primary'] {
   background-color: var(--bush-green-light) !important;
   border-color: var(--bush-green) !important;
 }
-button[class*="awsui_variant-primary"]:hover {
+button[class*='awsui_variant-primary']:hover {
   background-color: var(--bush-green) !important;
 }
 
@@ -60,13 +65,13 @@ button[class*="awsui_variant-primary"]:hover {
 }
 
 /* Containers — warm white with slight transparency */
-div[class*="awsui_root"][class*="awsui_variant-default"] {
+div[class*='awsui_root'][class*='awsui_variant-default'] {
   background-color: rgba(255, 255, 255, 0.95) !important;
   border-color: var(--eucalyptus) !important;
 }
 
 /* Loading spinner — ochre */
-span[class*="awsui_circle"] {
+span[class*='awsui_circle'] {
   stroke: var(--ochre) !important;
 }
 

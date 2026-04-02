@@ -80,7 +80,13 @@ export function ChatPage(): React.JSX.Element {
           token = await refreshSession();
           if (!token) return;
           const refreshedActorId = extractActorId(token);
-          response = await invokeAgent(content.trim(), token, userLocation, sessionId, refreshedActorId);
+          response = await invokeAgent(
+            content.trim(),
+            token,
+            userLocation,
+            sessionId,
+            refreshedActorId,
+          );
         }
 
         if (!response.ok) {
@@ -99,7 +105,12 @@ export function ChatPage(): React.JSX.Element {
 
         setCurrentAnswer(agentText);
         setHistory((prev) => [
-          { id: crypto.randomUUID(), question: content.trim(), answer: agentText, timestamp: new Date() },
+          {
+            id: crypto.randomUUID(),
+            question: content.trim(),
+            answer: agentText,
+            timestamp: new Date(),
+          },
           ...prev,
         ]);
       } catch {
@@ -115,11 +126,7 @@ export function ChatPage(): React.JSX.Element {
     <SpaceBetween size="l">
       {/* Input bar */}
       <Container header={<Header variant="h1">🌿 Bush Ranger AI</Header>}>
-        <MessageInput
-          onSend={(msg) => void sendMessage(msg)}
-          isLoading={isLoading}
-          error={error}
-        />
+        <MessageInput onSend={(msg) => void sendMessage(msg)} isLoading={isLoading} error={error} />
       </Container>
 
       {/* Suggestions */}
@@ -160,11 +167,7 @@ export function ChatPage(): React.JSX.Element {
           <Container header={<Header variant="h2">History</Header>}>
             <SpaceBetween size="s">
               {history.map((record) => (
-                <ExpandableSection
-                  key={record.id}
-                  headerText={record.question}
-                  variant="footer"
-                >
+                <ExpandableSection key={record.id} headerText={record.question} variant="footer">
                   <div style={{ lineHeight: 1.6 }}>
                     <Markdown>{record.answer}</Markdown>
                   </div>

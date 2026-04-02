@@ -2,14 +2,23 @@
 import React, { useEffect, useState } from 'react';
 import AppLayout from '@cloudscape-design/components/app-layout';
 import TopNavigation from '@cloudscape-design/components/top-navigation';
+import SideNavigation, {
+  type SideNavigationProps,
+} from '@cloudscape-design/components/side-navigation';
 import Spinner from '@cloudscape-design/components/spinner';
 import '@cloudscape-design/global-styles/index.css';
 import './bush-theme.css';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { SignIn } from './auth/SignIn';
 import { ChatPage } from './chat/ChatPage';
+import { DashboardPage } from './analytics/DashboardPage';
 
-const BG_IMAGES = ['/outback-bg-1.png', '/outback-bg-2.png', '/outback-bg-3.png', '/outback-bg-4.png'];
+const BG_IMAGES = [
+  '/outback-bg-1.png',
+  '/outback-bg-2.png',
+  '/outback-bg-3.png',
+  '/outback-bg-4.png',
+];
 const BG_INTERVAL_MS = 60_000;
 
 function BackgroundRotator(): React.JSX.Element {
@@ -42,8 +51,16 @@ function BackgroundRotator(): React.JSX.Element {
   );
 }
 
+type PageId = 'chat' | 'dashboard';
+
+const NAV_ITEMS: SideNavigationProps.Item[] = [
+  { type: 'link', text: 'Chat', href: '/chat' },
+  { type: 'link', text: 'Dashboard', href: '/dashboard' },
+];
+
 function AppContent(): React.JSX.Element {
   const { isAuthenticated, isLoading, signOut } = useAuth();
+  const [currentPage, setCurrentPage] = useState<PageId>('chat');
 
   if (isLoading) {
     return (
@@ -69,12 +86,40 @@ function AppContent(): React.JSX.Element {
         utilities={[
           {
             type: 'button',
+            text: `v${__BUILD_VERSION__}`,
+          },
+          {
+            type: 'button',
             text: 'Sign out',
             onClick: signOut,
           },
         ]}
       />
-      <AppLayout content={<ChatPage />} navigationHide toolsHide />
+      <AppLayout
+        navigation={
+          <SideNavigation
+            activeHref={`/${currentPage}`}
+            items={NAV_ITEMS}
+            onFollow={(event) => {
+              event.preventDefault();
+              const href = event.detail.href;
+              if (href === '/chat') setCurrentPage('chat');
+              else if (href === '/dashboard') setCurrentPage('dashboard');
+            }}
+          />
+        }
+        content={
+          <>
+            <div style={{ display: currentPage === 'chat' ? 'block' : 'none' }}>
+              <ChatPage />
+            </div>
+            <div style={{ display: currentPage === 'dashboard' ? 'block' : 'none' }}>
+              <DashboardPage />
+            </div>
+          </>
+        }
+        toolsHide
+      />
     </>
   );
 }

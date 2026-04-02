@@ -140,17 +140,21 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
         },
         newPasswordRequired: () => {
           // Complete the challenge with the password the user entered
-          cognitoUser.completeNewPasswordChallenge(password, {}, {
-            onSuccess: (session: CognitoUserSession) => {
-              const token = session.getAccessToken().getJwtToken();
-              setAccessToken(token);
-              setIsAuthenticated(true);
-              resolve();
+          cognitoUser.completeNewPasswordChallenge(
+            password,
+            {},
+            {
+              onSuccess: (session: CognitoUserSession) => {
+                const token = session.getAccessToken().getJwtToken();
+                setAccessToken(token);
+                setIsAuthenticated(true);
+                resolve();
+              },
+              onFailure: (err: Error) => {
+                reject(err);
+              },
             },
-            onFailure: (err: Error) => {
-              reject(err);
-            },
-          });
+          );
         },
       });
     });

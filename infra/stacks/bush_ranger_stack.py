@@ -159,6 +159,11 @@ class BushRangerStack(Stack):
         self._create_api_lambda()
 
         # ----------------------------------------------------------------
+        # Analytics Lambda (read-only sighting aggregation endpoints)
+        # ----------------------------------------------------------------
+        self._create_analytics_lambda()
+
+        # ----------------------------------------------------------------
         # 7.12 Stack Outputs
         # ----------------------------------------------------------------
         self._create_outputs()
@@ -557,14 +562,14 @@ class BushRangerStack(Stack):
             protocol_type="HTTP",
             cors_configuration=apigwv2.CfnApi.CorsProperty(
                 allow_origins=[f"https://{self.distribution.distribution_domain_name}"],
-                allow_methods=["POST", "OPTIONS"],
+                allow_methods=["GET", "POST", "OPTIONS"],
                 allow_headers=["Authorization", "Content-Type"],
                 max_age=3600,
             ),
         )
 
         # JWT Authorizer (Cognito)
-        authorizer = apigwv2.CfnAuthorizer(
+        self.jwt_authorizer = apigwv2.CfnAuthorizer(
             self,
             "CognitoJwtAuthorizer",
             api_id=api.ref,
@@ -584,7 +589,7 @@ class BushRangerStack(Stack):
             api_id=api.ref,
             route_key="POST /invoke",
             authorization_type="JWT",
-            authorizer_id=authorizer.ref,
+            authorizer_id=self.jwt_authorizer.ref,
         )
 
         # Access log group for API requests
@@ -1246,6 +1251,102 @@ def handler(event, context):
         self.invoke_route.add_property_override(
             "Target",
             cdk.Fn.join("", ["integrations/", integration.ref]),
+        )
+
+    # ------------------------------------------------------------------
+    # Analytics Lambda (read-only sighting aggregation)
+    # ------------------------------------------------------------------
+    def _create_analytics_lambda(self) -> None:
+        """Create a Lambda for analytics endpoints and wire API Gateway routes."""
+        _services = Path(__file__).resolve().parent.parent.parent / "services"
+
+        analytics_fn = _lambda.Function(
+            self,
+            "AnalyticsFunction",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="analytics_handler.handler",
+            code=_lambda.Code.from_asset(str(_services / "api")),
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            environment={
+                "TABLE_NAME": self.sightings_table.table_name,
+                "GSI_NAME": GSI_NAME,
+                "CORS_ORIGIN": f"https://{self.distribution.distribution_domain_name}",
+            },
+        )
+
+        # Grant read-only DynamoDB permissions on the sightings table and GSI
+        analytics_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:Query", "dynamodb:Scan"],
+                resources=[
+                    self.sightings_table.table_arn,
+                    f"{self.sightings_table.table_arn}/index/{GSI_NAME}",
+                ],
+            )
+        )
+
+        # API Gateway integration → Analytics Lambda
+        analytics_integration = apigwv2.CfnIntegration(
+            self,
+            "AnalyticsLambdaIntegration",
+            api_id=self.http_api.ref,
+            integration_type="AWS_PROXY",
+            integration_uri=analytics_fn.function_arn,
+            payload_format_version="2.0",
+        )
+
+        integration_target = cdk.Fn.join("", ["integrations/", analytics_integration.ref])
+
+        # GET /analytics/locations route
+        apigwv2.CfnRoute(
+            self,
+            "AnalyticsLocationsRoute",
+            api_id=self.http_api.ref,
+            route_key="GET /analytics/locations",
+            authorization_type="JWT",
+            authorizer_id=self.jwt_authorizer.ref,
+            target=integration_target,
+        )
+
+        # GET /analytics/trends route
+        apigwv2.CfnRoute(
+            self,
+            "AnalyticsTrendsRoute",
+            api_id=self.http_api.ref,
+            route_key="GET /analytics/trends",
+            authorization_type="JWT",
+            authorizer_id=self.jwt_authorizer.ref,
+            target=integration_target,
+        )
+
+        # GET /analytics/status route
+        apigwv2.CfnRoute(
+            self,
+            "AnalyticsStatusRoute",
+            api_id=self.http_api.ref,
+            route_key="GET /analytics/status",
+            authorization_type="JWT",
+            authorizer_id=self.jwt_authorizer.ref,
+            target=integration_target,
+        )
+
+        # Grant API Gateway permission to invoke the Analytics Lambda
+        analytics_fn.add_permission(
+            "ApiGwInvokeAnalytics",
+            principal=iam.ServicePrincipal("apigateway.amazonaws.com"),
+            source_arn=cdk.Fn.join(
+                "",
+                [
+                    "arn:aws:execute-api:",
+                    self.region,
+                    ":",
+                    self.account,
+                    ":",
+                    self.http_api.ref,
+                    "/*/*/analytics/*",
+                ],
+            ),
         )
 
     # ------------------------------------------------------------------

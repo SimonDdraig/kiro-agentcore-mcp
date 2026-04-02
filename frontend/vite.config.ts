@@ -19,6 +19,9 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
   },
+  define: {
+    __BUILD_VERSION__: JSON.stringify(new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)),
+  },
   test: {
     globals: true,
     environment: 'jsdom',
