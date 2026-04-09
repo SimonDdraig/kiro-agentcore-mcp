@@ -713,10 +713,10 @@ class TestMemoryResourceProvisioning:
             statements = resource.get("Properties", {}).get("PolicyDocument", {}).get("Statement", [])
             for stmt in statements:
                 action = stmt.get("Action", [])
-                if isinstance(action, list) and set(action) == {
+                if isinstance(action, list) and {
                     "bedrock-agentcore:InvokeMemory",
                     "bedrock-agentcore:RetrieveMemory",
-                }:
+                }.issubset(set(action)):
                     # Verify the resource is scoped to a memory ARN (contains "memory/")
                     res = stmt.get("Resource", "")
                     # Resource may be a string or a Fn::Join intrinsic

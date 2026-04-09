@@ -1138,6 +1138,12 @@ def handler(event, context):
                 actions=[
                     "bedrock-agentcore:InvokeMemory",
                     "bedrock-agentcore:RetrieveMemory",
+                    "bedrock-agentcore:ListEvents",
+                    "bedrock-agentcore:CreateEvent",
+                    "bedrock-agentcore:GetMemory",
+                    "bedrock-agentcore:GetSession",
+                    "bedrock-agentcore:CreateSession",
+                    "bedrock-agentcore:ListSessions",
                 ],
                 resources=[
                     f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:memory/{memory_id}",

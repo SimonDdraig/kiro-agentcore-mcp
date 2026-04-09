@@ -85,6 +85,12 @@ _ALLOWED_ACTIONS: dict[str, set[str]] = {
         "cloudwatch:PutMetricData",
         "bedrock-agentcore:InvokeMemory",
         "bedrock-agentcore:RetrieveMemory",
+        "bedrock-agentcore:ListEvents",
+        "bedrock-agentcore:CreateEvent",
+        "bedrock-agentcore:GetMemory",
+        "bedrock-agentcore:GetSession",
+        "bedrock-agentcore:CreateSession",
+        "bedrock-agentcore:ListSessions",
     },
     "kb": {
         "s3:GetObject",

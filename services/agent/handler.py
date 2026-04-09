@@ -214,7 +214,7 @@ def _build_session_manager(session_id: str, actor_id: str | None) -> AgentCoreMe
             session_id=session_id,
             actor_id=actor_id or "anonymous",
         )
-        return AgentCoreMemorySessionManager(agentcore_memory_config=config)
+        return AgentCoreMemorySessionManager(agentcore_memory_config=config, region_name=REGION)
     except Exception:
         logger.exception("Failed to initialize memory session manager")
         return None
