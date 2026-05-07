@@ -47,7 +47,7 @@
 </head>
 <body>
 <h1>🌿 Bush Ranger AI — Architecture</h1>
-<p class="subtitle">AWS AgentCore · MCP Servers · React Frontend · Amazon Bedrock</p>
+<p class="subtitle">AWS AgentCore · MCP Servers · React Frontend · Amazon Bedrock · AgentCore Evaluations</p>
 
 <!-- Row 1: User + CloudFront + S3 Frontend + Cognito -->
 <div class="row">
@@ -122,6 +122,14 @@
     <div style="display:flex; align-items:center; padding:0 12px;">
       <span style="color:#0073bb; font-size:24px;">→</span>
     </div>
+    <div class="node">
+      <img src="https://img.icons8.com/color/96/paint-palette.png" alt="Stable Image Core"/>
+      <div class="label">Stable Image Core</div>
+      <div class="sublabel">Bedrock · Image Generation</div>
+    </div>
+    <div style="display:flex; align-items:center; padding:0 12px;">
+      <span style="color:#0073bb; font-size:24px;">→</span>
+    </div>
     <div class="node highlight">
       <img src="https://img.icons8.com/color/96/brain.png" alt="Memory"/>
       <div class="label">AgentCore Memory</div>
@@ -130,6 +138,7 @@
   </div>
 
   <div class="connector-row">
+    <span class="arrow">▼</span>
     <span class="arrow">▼</span>
     <span class="arrow">▼</span>
     <span class="arrow">▼</span>
@@ -152,6 +161,76 @@
       <div class="label">Weather & Fire</div>
       <div class="sublabel">MCP Server · Open-Meteo</div>
     </div>
+    <div class="node highlight">
+      <img src="https://img.icons8.com/color/96/paint-palette.png" alt="Art Gallery"/>
+      <div class="label">Art Gallery</div>
+      <div class="sublabel">MCP Server · Stable Image Core</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Evaluations: OTel traces flow right from Agent to CloudWatch -->
+<div style="text-align:center; margin-top: 16px;">
+<div class="group-box" style="border-color: #d13212;">
+  <span class="group-label" style="color: #d13212;">AgentCore Evaluations</span>
+  <div class="row" style="margin-bottom:12px;">
+    <div class="node">
+      <img src="https://img.icons8.com/color/96/bar-chart--v1.png" alt="CloudWatch"/>
+      <div class="label">CloudWatch Logs</div>
+      <div class="sublabel">Agent OTel Traces</div>
+    </div>
+    <div style="display:flex; align-items:center; padding:0 12px;">
+      <span style="color:#d13212; font-size:24px;">→</span>
+    </div>
+    <div class="node" style="border-color: #d13212; background: #fef6f4;">
+      <img src="https://img.icons8.com/color/96/settings--v1.png" alt="Online Eval"/>
+      <div class="label">Online Eval Config</div>
+      <div class="sublabel">100% Sampling · 5min</div>
+    </div>
+    <div style="display:flex; align-items:center; padding:0 12px;">
+      <span style="color:#d13212; font-size:24px;">→</span>
+    </div>
+    <div class="node" style="border-color: #d13212; background: #fef6f4;">
+      <img src="https://img.icons8.com/color/96/checkmark--v1.png" alt="Evaluators"/>
+      <div class="label">Evaluators</div>
+      <div class="sublabel">Helpfulness · Tool Selection · Custom</div>
+    </div>
+    <div style="display:flex; align-items:center; padding:0 12px;">
+      <span style="color:#d13212; font-size:24px;">→</span>
+    </div>
+    <div class="node">
+      <img src="https://img.icons8.com/color/96/bar-chart--v1.png" alt="Results"/>
+      <div class="label">CloudWatch Logs</div>
+      <div class="sublabel">Evaluation Results</div>
+    </div>
+  </div>
+  <div class="connector"><span class="arrow red">▼</span><span class="arrow-label">GET /evaluations/*</span></div>
+  <div class="row">
+    <div class="spacer"></div>
+    <div class="node">
+      <img src="https://img.icons8.com/color/96/lambda.png" alt="Eval Lambda"/>
+      <div class="label">Evaluations API</div>
+      <div class="sublabel">Lambda · Summary + Recent</div>
+    </div>
+    <div style="display:flex; align-items:center; padding:0 12px;">
+      <span style="color:#d13212; font-size:24px;">→</span>
+    </div>
+    <div class="node">
+      <img src="https://img.icons8.com/color/96/amazon-dynamodb.png" alt="Eval DDB"
+           onerror="this.src='https://img.icons8.com/color/96/database.png'"/>
+      <div class="label">DynamoDB</div>
+      <div class="sublabel">Evaluations Table</div>
+    </div>
+    <div style="display:flex; align-items:center; padding:0 12px;">
+      <span style="color:#d13212; font-size:24px;">→</span>
+    </div>
+    <div class="node">
+      <img src="https://img.icons8.com/color/96/combo-chart--v1.png" alt="Dashboard"/>
+      <div class="label">Dashboard UI</div>
+      <div class="sublabel">Score Cards · Trends · Table</div>
+    </div>
+    <div class="spacer"></div>
   </div>
 </div>
 </div>
@@ -193,10 +272,16 @@
     <div class="label">Open-Meteo API</div>
     <div class="sublabel">External · Free</div>
   </div>
+  <div class="node">
+    <img src="https://img.icons8.com/color/96/amazon-s3.png" alt="S3 Gallery"/>
+    <div class="label">S3 Bucket</div>
+    <div class="sublabel">ArtGallery/ Images</div>
+  </div>
 </div>
 
 <div class="legend">
   <span>🔵 Blue border = AgentCore runtime</span>
+  <span>🔴 Red border = Evaluations pipeline</span>
   <span>⬜ Solid border = AWS service</span>
   <span>⬜ Dashed border = External service</span>
   <span>▼ = Data flow direction</span>

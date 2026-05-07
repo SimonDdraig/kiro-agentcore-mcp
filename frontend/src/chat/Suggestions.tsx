@@ -46,6 +46,12 @@ const SUGGESTIONS = [
     text: 'Search documents',
     message: 'Search conservation documents for bushfire response procedures.',
   },
+  {
+    id: 'generate-image',
+    emoji: '🎨',
+    text: 'Generate image',
+    message: 'Generate an image of a koala sitting in a eucalyptus tree at sunset.',
+  },
 ];
 
 export function Suggestions({ onSelect }: SuggestionsProps): React.JSX.Element {

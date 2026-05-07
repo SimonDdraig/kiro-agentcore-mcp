@@ -90,3 +90,9 @@ module = [
     "services.agent.handler",
 ]
 disable_error_code = ["import-not-found"]
+
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::pytest.PytestUnhandledThreadExceptionWarning",
+]

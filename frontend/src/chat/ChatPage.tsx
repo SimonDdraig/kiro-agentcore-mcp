@@ -152,8 +152,44 @@ export function ChatPage(): React.JSX.Element {
             </Box>
           )}
           {!isLoading && !currentAnswer && (
-            <Box padding="l" textAlign="center" color="text-body-secondary">
-              Ask a question above to get started.
+            <Box padding="l">
+              <SpaceBetween size="m">
+                <Box variant="h3" textAlign="center">
+                  Welcome to Bush Ranger AI
+                </Box>
+                <Box variant="p" color="text-body-secondary" textAlign="center">
+                  Your Australian park ranger assistant. Here&apos;s what I can help with:
+                </Box>
+                <ColumnLayout columns={2} variant="text-grid">
+                  <div>
+                    <Box variant="h4">🦘 Wildlife Tracking</Box>
+                    <Box variant="p" fontSize="body-s" color="text-body-secondary">
+                      Log sightings, search by species, location, or conservation status
+                    </Box>
+                  </div>
+                  <div>
+                    <Box variant="h4">📄 Conservation Docs</Box>
+                    <Box variant="p" fontSize="body-s" color="text-body-secondary">
+                      Search fact sheets, management plans, and emergency procedures
+                    </Box>
+                  </div>
+                  <div>
+                    <Box variant="h4">🌤️ Weather &amp; Fire Danger</Box>
+                    <Box variant="p" fontSize="body-s" color="text-body-secondary">
+                      Current conditions, forecasts, and fire danger assessments
+                    </Box>
+                  </div>
+                  <div>
+                    <Box variant="h4">🎨 AI Image Generation</Box>
+                    <Box variant="p" fontSize="body-s" color="text-body-secondary">
+                      Generate images of Australian wildlife and nature for reports and displays
+                    </Box>
+                  </div>
+                </ColumnLayout>
+                <Box variant="p" color="text-body-secondary" textAlign="center" fontSize="body-s">
+                  Try a quick action below, or type your own question.
+                </Box>
+              </SpaceBetween>
             </Box>
           )}
           {!isLoading && currentAnswer && (

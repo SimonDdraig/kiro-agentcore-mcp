@@ -55,6 +55,26 @@ You help park rangers across Australia by:
   and emergency procedures
 - Checking current weather conditions, forecasts, and fire danger assessments
   for Australian locations
+- Generating AI images of Australian wildlife and nature, checking generation
+  status, and browsing the art gallery of previously generated images
+
+Image generation rules:
+- When the user asks to check a job status and get_job_status returns
+  "job_not_found", report that the job was not found. Do NOT automatically
+  generate a new image. The user must explicitly ask for a new generation.
+- Job status tracking is in-memory and may not persist between requests.
+  If a job is not found, suggest the user check the gallery instead, as
+  completed images are stored permanently in S3.
+- When generating images, choose the style parameter based on the scene:
+  - "outback" — desert landscapes, arid regions, red earth, open plains, sunset/sunrise
+  - "bush" — rainforest, dense vegetation, eucalyptus forests, wetlands, lush greenery
+  - "night" — nocturnal animals, starry skies, moonlit scenes, twilight
+  - "beach" — coastal scenes, ocean, shorelines, marine life near the coast
+  - "river" — rivers, streams, creeks, waterways, riparian environments
+  - "billabong" — still water, wetland pools, waterholes, reflective water scenes
+  - "city" — urban landscapes, city skylines, buildings, streets, parks in cities
+  - "town" — rural towns, small settlements, country roads, outback townships
+  If unsure, default to "outback".
 
 Location context rules:
 - The user's current GPS coordinates may be included with each request. Treat
@@ -120,6 +140,12 @@ Present the results as a structured morning briefing:
 End with a suggested focus for the day based on the data (e.g. "Quiet week for
 sightings in the northern sector — might be worth a patrol up there").
 
+Gallery listing rule:
+When the user asks to "list gallery images", "show the gallery", or similar,
+call list_gallery_images and return the raw JSON result exactly as received
+from the tool, without any additional text or formatting. The frontend parses
+this JSON directly to render the gallery.
+
 At the end of every response, include a brief note listing which tools you used
 to gather the information and which MCP server owns them, formatted as:
 ---
@@ -129,12 +155,14 @@ The MCP server names are:
 - wildlife-sightings: create_sighting, query_by_species, query_by_location, query_by_status
 - conservation-docs: list_documents, get_document, search_documents
 - weather-climate: get_current_weather, get_forecast, assess_fire_danger
+- art-gallery: generate_image, get_job_status, list_gallery_images
 """
 
 # MCP server runtime ARNs (set by CDK as env vars)
 WILDLIFE_RUNTIME_ARN = os.environ.get("WILDLIFE_SIGHTINGS_RUNTIME_ARN", "")
 DOCS_RUNTIME_ARN = os.environ.get("CONSERVATION_DOCS_RUNTIME_ARN", "")
 WEATHER_RUNTIME_ARN = os.environ.get("WEATHER_RUNTIME_ARN", "")
+ART_GALLERY_RUNTIME_ARN = os.environ.get("ART_GALLERY_RUNTIME_ARN", "")
 
 # Cognito M2M credentials (set by CDK as env vars)
 COGNITO_TOKEN_URL = os.environ.get("COGNITO_TOKEN_URL", "")
@@ -239,6 +267,7 @@ def _build_mcp_clients() -> list[MCPClient]:
         ("wildlife_sightings", WILDLIFE_RUNTIME_ARN),
         ("conservation_docs", DOCS_RUNTIME_ARN),
         ("weather", WEATHER_RUNTIME_ARN),
+        ("art_gallery", ART_GALLERY_RUNTIME_ARN),
     ]
 
     for name, arn in endpoints:

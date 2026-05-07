@@ -11,4 +11,8 @@ COPY logging_config.py .
 
 EXPOSE 8080
 
-CMD ["python", "handler.py"]
+# Set OTel resource attributes so traces are tagged with the agent service name
+ENV OTEL_RESOURCE_ATTRIBUTES="service.name=bush_ranger_agent.DEFAULT"
+
+# Launch with opentelemetry-instrument for automatic OTel tracing
+CMD ["opentelemetry-instrument", "python", "handler.py"]

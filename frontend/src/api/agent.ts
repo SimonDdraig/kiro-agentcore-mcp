@@ -1,7 +1,7 @@
 // Copyright 2025 Bush Ranger AI Project. All rights reserved.
 
 const API_ENDPOINT = import.meta.env.VITE_API_ENDPOINT ?? '';
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
 /**
  * Sanitize error messages to prevent exposing internal details.

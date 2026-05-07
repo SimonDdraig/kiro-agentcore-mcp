@@ -42,8 +42,8 @@ class TestProperty10StackSynthesisesValidTemplate:
     """Validates: Property 10 — CDK stack synthesizes a valid CloudFormation template."""
 
     def test_dynamodb_table_exists(self, template: Template) -> None:
-        """Template contains DynamoDB table resources (Sightings + Rangers)."""
-        template.resource_count_is("AWS::DynamoDB::Table", 2)
+        """Template contains DynamoDB table resources (Sightings + Rangers + Evaluations)."""
+        template.resource_count_is("AWS::DynamoDB::Table", 3)
 
     def test_s3_buckets_exist(self, template: Template) -> None:
         """Template contains S3 bucket resources (docs + frontend + at least BucketDeployment staging)."""
@@ -70,8 +70,8 @@ class TestProperty10StackSynthesisesValidTemplate:
         )
 
     def test_agentcore_agent_runtime_exists(self, template: Template) -> None:
-        """Template contains AgentCore Runtime resources (agent + 3 MCP servers)."""
-        template.resource_count_is("AWS::BedrockAgentCore::Runtime", 4)
+        """Template contains AgentCore Runtime resources (agent + 4 MCP servers)."""
+        template.resource_count_is("AWS::BedrockAgentCore::Runtime", 5)
 
     def test_iam_roles_exist(self, template: Template) -> None:
         """Template contains IAM roles (at least 4: wildlife, docs, weather, agent)."""
@@ -79,8 +79,8 @@ class TestProperty10StackSynthesisesValidTemplate:
         assert len(resources) >= 4, f"Expected at least 4 IAM roles, found {len(resources)}"
 
     def test_cloudwatch_log_groups_exist(self, template: Template) -> None:
-        """Template contains 6 CloudWatch log groups (agent + 4 MCP servers + API Gateway)."""
-        template.resource_count_is("AWS::Logs::LogGroup", 6)
+        """Template contains 7 CloudWatch log groups (agent + 5 MCP servers + API Gateway)."""
+        template.resource_count_is("AWS::Logs::LogGroup", 7)
 
 
 # ------------------------------------------------------------------

@@ -6,7 +6,9 @@
       "disabled": false,
       "autoApprove": [
         "aws___search_documentation",
-        "aws___read_documentation"
+        "aws___read_documentation",
+        "aws___get_regional_availability",
+        "aws___recommend"
       ]
     }
   }

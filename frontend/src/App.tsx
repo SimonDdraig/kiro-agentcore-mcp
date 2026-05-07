@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { SignIn } from './auth/SignIn';
 import { ChatPage } from './chat/ChatPage';
 import { DashboardPage } from './analytics/DashboardPage';
+import { GalleryPage } from './gallery/GalleryPage';
 
 const BG_IMAGES = [
   '/outback-bg-1.png',
@@ -51,11 +52,12 @@ function BackgroundRotator(): React.JSX.Element {
   );
 }
 
-type PageId = 'chat' | 'dashboard';
+type PageId = 'chat' | 'dashboard' | 'gallery';
 
 const NAV_ITEMS: SideNavigationProps.Item[] = [
   { type: 'link', text: 'Chat', href: '/chat' },
   { type: 'link', text: 'Dashboard', href: '/dashboard' },
+  { type: 'link', text: 'Gallery', href: '/gallery' },
 ];
 
 function AppContent(): React.JSX.Element {
@@ -105,6 +107,7 @@ function AppContent(): React.JSX.Element {
               const href = event.detail.href;
               if (href === '/chat') setCurrentPage('chat');
               else if (href === '/dashboard') setCurrentPage('dashboard');
+              else if (href === '/gallery') setCurrentPage('gallery');
             }}
           />
         }
@@ -115,6 +118,9 @@ function AppContent(): React.JSX.Element {
             </div>
             <div style={{ display: currentPage === 'dashboard' ? 'block' : 'none' }}>
               <DashboardPage />
+            </div>
+            <div style={{ display: currentPage === 'gallery' ? 'block' : 'none' }}>
+              <GalleryPage isVisible={currentPage === 'gallery'} />
             </div>
           </>
         }
